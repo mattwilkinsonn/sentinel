@@ -1,0 +1,9 @@
+{
+  "locationHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "character": { "gameCharacterId": 0, "gameCharacterBId": 0 },
+  "networkNode": { "typeId": 0, "itemId": 0 },
+  "assembly": { "typeId": 0, "itemId": 0 },
+  "storageUnit": { "typeId": 0, "itemId": 0 },
+  "gate": { "typeId": 0, "itemId1": 0, "itemId2": 0 },
+  "item": { "typeId": 0, "itemId": 0 }
+}

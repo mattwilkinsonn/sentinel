@@ -17,6 +17,8 @@ use crate::types::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load .env from project root
+    dotenvy::from_path("../.env").ok();
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt()

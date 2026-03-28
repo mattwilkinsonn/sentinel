@@ -24,6 +24,18 @@ contracts-test:
 contracts-deploy:
     cd move-contracts/sentinel && sui client publish --build-env testnet
 
+# Create threat registry (after deploy)
+sentinel-create-registry:
+    cd ts-scripts && bun run sentinel/create-registry.ts
+
+# Set gate threshold (needs GATE_MAX_THREAT_SCORE in .env)
+sentinel-configure-gate:
+    cd ts-scripts && bun run sentinel/configure-gate.ts
+
+# Authorize sentinel on a gate (needs GATE_ID, CHARACTER_ID in .env)
+sentinel-authorize-gate:
+    cd ts-scripts && bun run sentinel/authorize-gate.ts
+
 # === Backend ===
 
 # Check backend compiles
@@ -38,13 +50,9 @@ backend-test:
 backend-build:
     cd sentinel-backend && cargo build --release
 
-# Run backend service
+# Run backend service (serves both demo + live data)
 backend-run:
     cd sentinel-backend && cargo run
-
-# Run backend with demo data (no blockchain connection needed)
-backend-demo:
-    cd sentinel-backend && cargo run -- --demo
 
 # === Frontend ===
 
@@ -96,10 +104,4 @@ build: contracts-build backend-build frontend-build
 dev:
     @echo "Starting backend on :3001 and frontend on :5173..."
     @just backend-run &
-    @just frontend-dev
-
-# Run with demo data (no blockchain connection needed)
-dev-demo:
-    @echo "Starting demo backend on :3001 and frontend on :5173..."
-    @just backend-demo &
     @just frontend-dev
