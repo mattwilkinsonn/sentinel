@@ -41,7 +41,7 @@ repos:
       - id: biome
         name: biome (lint + format)
         language: system
-        entry: bunx biome check
+        entry: bunx biome check .
         files: \.(ts|tsx)$
         pass_filenames: false
       - id: prettier-move

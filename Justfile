@@ -99,13 +99,13 @@ fmt-rust:
 fmt-move:
     cd ts-scripts && bun run fmt:move
 
-# Format TypeScript (Biome)
+# Format + lint TypeScript (Biome)
 fmt-ts:
-    bunx biome format --write .
+    bunx biome check --fix --unsafe .
 
 # Lint TypeScript (Biome)
 lint:
-    bunx biome lint .
+    bunx biome check .
 
 # Check everything (formatting + linting)
 check: check-rust check-ts check-move

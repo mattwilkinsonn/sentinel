@@ -112,7 +112,7 @@ jobs:
         run: cd frontend && bun install && cd ../ts-scripts && bun install
 
       - name: Biome (lint + format)
-        run: bunx biome check
+        run: bunx biome check .
 
       - name: Prettier (Move)
         run: cd ts-scripts && bun run fmt:move:check

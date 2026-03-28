@@ -5,9 +5,7 @@
   "scripts": {
     "fmt:move": "prettier --plugin @mysten/prettier-plugin-move --write \"../move-contracts/*/sources/**/*.move\" \"../move-contracts/*/tests/**/*.move\"",
     "fmt:move:check": "prettier --plugin @mysten/prettier-plugin-move --check \"../move-contracts/*/sources/**/*.move\" \"../move-contracts/*/tests/**/*.move\"",
-    "lint": "biome lint .",
-    "fmt": "biome format --write .",
-    "fmt:check": "biome check . && bun run fmt:move:check"
+    "fmt:check": "bun run fmt:move:check"
   },
   "dependencies": {
     "@mysten/sui": "^2.0.0",

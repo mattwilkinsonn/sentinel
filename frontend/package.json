@@ -8,10 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "biome lint src/",
-    "fmt": "biome format --write src/",
-    "fmt:check": "biome check src/"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@kobalte/core": "^0.13.11",
