@@ -71,16 +71,26 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                     #{i() + 1}
                   </span>
                   <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1">
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
                       <span class="text-sm font-bold text-text-primary">
                         {profile.name || `Pilot #${profile.character_item_id}`}
                       </span>
+                      {profile.tribe_name && (
+                        <span class="text-xs text-text-muted">[{profile.tribe_name}]</span>
+                      )}
                       <span
                         class={`badge ${colorClass()}`}
                         style={{ background: `${color()}15` }}
                       >
                         {tier()}
                       </span>
+                      {profile.titles?.slice(0, 2).map((title) => (
+                        <span
+                          class="text-[10px] px-1.5 py-0.5 rounded border border-border-default text-text-muted"
+                        >
+                          {title}
+                        </span>
+                      ))}
                     </div>
                     <div style="height:6px;border-radius:3px;background:rgba(250,250,229,0.08);overflow:hidden">
                       <div
@@ -149,8 +159,17 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                       <div class="mt-2 text-xs text-text-muted">
                         Last seen:{" "}
                         <span class="text-text-secondary">
-                          {profile.last_seen_system}
+                          {profile.last_seen_system_name || profile.last_seen_system}
                         </span>
+                      </div>
+                    )}
+                    {profile.titles && profile.titles.length > 0 && (
+                      <div class="mt-2 flex flex-wrap gap-1">
+                        {profile.titles.map((title) => (
+                          <span class="text-[10px] px-1.5 py-0.5 rounded border border-accent-gold/30 text-accent-gold">
+                            {title}
+                          </span>
+                        ))}
                       </div>
                     )}
                     {/* Score breakdown */}

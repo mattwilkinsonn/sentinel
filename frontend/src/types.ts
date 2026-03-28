@@ -7,6 +7,11 @@ export type ThreatProfile = {
   bounty_count: number;
   last_kill_timestamp: number;
   last_seen_system: string;
+  last_seen_system_name: string;
+  tribe_id: string;
+  tribe_name: string;
+  titles: string[];
+  threat_tier: ThreatTier;
   recent_kills_24h: number;
   systems_visited: number;
 };

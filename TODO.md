@@ -55,6 +55,8 @@ Deadline: March 31, 2026 23:59 UTC
 - [ ] **Subscription model** — on-chain paid tiers via Move contract.
       WatchTower has Scout/Oracle/Spymaster tiers. Judges might like
       seeing a business model, but risks looking extractive.
+- [ ] **Migrate to SolidStart** — SSR, file-based routing, API routes.
+      Post-hackathon improvement for SEO and initial load performance.
 
 ## Ideas from competitor projects
 

@@ -12,6 +12,11 @@ const mockProfile: ThreatProfile = {
   bounty_count: 5,
   last_kill_timestamp: Date.now() - 1_800_000,
   last_seen_system: "J-1042",
+  last_seen_system_name: "Jita",
+  tribe_id: "",
+  tribe_name: "REAP",
+  titles: ["Apex Predator", "Most Wanted"],
+  threat_tier: "CRITICAL",
   recent_kills_24h: 8,
   systems_visited: 15,
 };
@@ -55,7 +60,7 @@ describe("ThreatCard", () => {
 
   it("shows last seen system", () => {
     render(() => <ThreatCard profile={mockProfile} onClose={() => {}} />);
-    expect(screen.getByText("J-1042")).toBeTruthy();
+    expect(screen.getByText("Jita")).toBeTruthy();
   });
 
   it("shows relative last kill time", () => {

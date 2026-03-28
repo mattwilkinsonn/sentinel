@@ -222,7 +222,7 @@ function ExpandableRow(props: {
           {p.last_seen_system && (
             <div class="mt-2 text-xs text-text-muted">
               Last seen:{" "}
-              <span class="text-text-secondary">{p.last_seen_system}</span>
+              <span class="text-text-secondary">{p.last_seen_system_name || p.last_seen_system}</span>
             </div>
           )}
         </div>

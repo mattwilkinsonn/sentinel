@@ -74,8 +74,16 @@ jobs:
       - name: Build release
         run: cd sentinel-backend && cargo build --release
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build Docker image
-        run: cd sentinel-backend && docker build -t sentinel-backend:ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: sentinel-backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   frontend:
     name: Solid.js Frontend

@@ -36,9 +36,16 @@ export function ThreatCard(props: ThreatCardProps) {
           <h4 class="text-lg tracking-wider">
             {props.profile.name || `Pilot #${props.profile.character_item_id}`}
           </h4>
-          <span class="text-xs text-text-muted">
-            #{props.profile.character_item_id}
-          </span>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-text-muted">
+              #{props.profile.character_item_id}
+            </span>
+            {props.profile.tribe_name && (
+              <span class="text-xs text-text-muted">
+                [{props.profile.tribe_name}]
+              </span>
+            )}
+          </div>
           <div class="flex items-center gap-2 mt-1">
             <span
               class={`badge ${colorClass()}`}
@@ -50,6 +57,15 @@ export function ThreatCard(props: ThreatCardProps) {
               {scoreDisplay()}
             </span>
           </div>
+          {props.profile.titles && props.profile.titles.length > 0 && (
+            <div class="flex flex-wrap gap-1 mt-2">
+              {props.profile.titles.map((title) => (
+                <span class="text-[10px] px-1.5 py-0.5 rounded border border-accent-gold/30 text-accent-gold">
+                  {title}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -111,7 +127,7 @@ export function ThreatCard(props: ThreatCardProps) {
         <div class="mt-3 text-xs text-text-muted">
           Last seen in system:{" "}
           <span class="text-text-secondary">
-            {props.profile.last_seen_system}
+            {props.profile.last_seen_system_name || props.profile.last_seen_system}
           </span>
         </div>
       )}
