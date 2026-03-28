@@ -115,10 +115,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Database sync loop (persists dirty profiles + events)
+    let initial_event_count = state.read().await.live.recent_events.len();
     let sync_state = state.clone();
     let sync_pool = db_pool.clone();
     tokio::spawn(async move {
-        db_sync_loop(sync_pool, sync_state).await;
+        db_sync_loop(sync_pool, sync_state, initial_event_count).await;
     });
 
     // HTTP API + SSE
@@ -133,8 +134,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Background loop that flushes dirty live profiles and checkpoint to Postgres.
-async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>) {
-    let mut last_event_count: usize = 0;
+async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_events: usize) {
+    let mut last_event_count: usize = initial_events;
 
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;

@@ -27,6 +27,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./sentinel-backend/src
+        - action: rebuild
+          path: ./sentinel-backend/Cargo.toml
 
 volumes:
   pgdata:

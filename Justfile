@@ -54,9 +54,9 @@ backend-test-integration: db
 backend-build:
     cd sentinel-backend && cargo build --release
 
-# Run backend service (serves both demo + live data)
+# Run backend service (watches for changes)
 backend-run:
-    cd sentinel-backend && cargo run
+    cd sentinel-backend && cargo watch -x run
 
 # === Frontend ===
 
@@ -64,8 +64,9 @@ backend-run:
 frontend-install:
     cd frontend && bun install
 
-# Run frontend dev server
+# Run frontend dev server (waits for backend if not ready)
 frontend-dev:
+    @until curl -sf http://localhost:3001/api/health > /dev/null 2>&1; do sleep 1; done
     cd frontend && bun run dev
 
 # Build frontend for production
@@ -154,8 +155,23 @@ db:
 db-stop:
     docker compose down
 
+# Wipe Postgres data and restart fresh
+db-reset:
+    docker compose down -v
+    docker compose up postgres -d
+
 # Run backend + frontend dev servers (starts Postgres automatically)
 dev: db
     @echo "Starting backend on :3001 and frontend on :5173..."
     @DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel just backend-run &
+    @echo "Waiting for backend..."
+    @until curl -sf http://localhost:3001/api/health > /dev/null 2>&1; do sleep 1; done
+    @echo "Backend ready!"
     @just frontend-dev
+
+# Run backend + Postgres in Docker (rebuilds on source changes)
+dev-docker:
+    docker compose up --build --watch
+
+# Alias for frontend dev.
+dev-frontend: frontend-dev

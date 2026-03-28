@@ -141,6 +141,9 @@ jobs:
   deploy:
     name: Deploy
     needs: [contracts, backend, frontend, lint]
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

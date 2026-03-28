@@ -160,7 +160,12 @@ pub async fn load_historical_killmails(
         let s = state.read().await;
         s.live.profiles.keys().copied().collect()
     };
-    // Track seen killmail object IDs to deduplicate
+    // If we already have events from DB, skip adding events (only create missing profiles)
+    let has_existing_events = {
+        let s = state.read().await;
+        !s.live.recent_events.is_empty()
+    };
+    // Track seen killmail object IDs to deduplicate within this load
     let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     loop {
@@ -271,7 +276,11 @@ pub async fn load_historical_killmails(
                 profile.threat_score = threat_engine::compute_score(profile);
             }
 
-            // Add as a historical event with flattened data
+            // Add event only if DB didn't already have events
+            if has_existing_events {
+                total += 1;
+                continue;
+            }
             s.live.push_event(
                 RawEvent {
                     event_type: "kill".into(),
