@@ -108,17 +108,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
 
-      - name: Install frontend deps
-        run: cd frontend && bun install
+      - name: Install deps
+        run: cd frontend && bun install && cd ../ts-scripts && bun install
 
-      - name: Install scripts deps
-        run: cd ts-scripts && bun install
+      - name: Biome (lint + format)
+        run: bunx biome check
 
-      - name: Check formatting (frontend)
-        run: cd frontend && bunx prettier --check "src/**/*.{ts,tsx}"
-
-      - name: Check formatting (scripts)
-        run: cd ts-scripts && bun run fmt:check
+      - name: Prettier (Move)
+        run: cd ts-scripts && bun run fmt:move:check
 
   deploy:
     name: Deploy
