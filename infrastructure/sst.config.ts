@@ -52,32 +52,23 @@ export default $config({
       historyRetentionSeconds: 21600,
     });
 
-    let dbBranch: neon.Branch;
-
-    try {
-      dbBranch = neon.Branch.get("SentinelDbBranch", db.id, { name: "main" });
-    } catch {
-      console.log("Branch 'main' not found, creating a new one...");
-      dbBranch = new neon.Branch("SentinelDbBranch", {
-        projectId: db.id,
-        name: "main",
-      });
-    }
+    // Use the default branch created automatically with the project
+    const dbBranchId = db.defaultBranchId;
 
     const dbEndpoint = new neon.Endpoint("SentinelDbEndpoint", {
       projectId: db.id,
-      branchId: dbBranch.id,
+      branchId: dbBranchId,
     });
 
     const dbRole = new neon.Role("SentinelDbRole", {
       projectId: db.id,
-      branchId: dbBranch.id,
+      branchId: dbBranchId,
       name: "sentinel",
     });
 
     const dbName = new neon.Database("SentinelDatabase", {
       projectId: db.id,
-      branchId: dbBranch.id,
+      branchId: dbBranchId,
       name: "sentinel",
       ownerName: dbRole.name,
     });

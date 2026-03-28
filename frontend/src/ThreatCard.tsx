@@ -127,7 +127,8 @@ export function ThreatCard(props: ThreatCardProps) {
         <div class="mt-3 text-xs text-text-muted">
           Last seen in system:{" "}
           <span class="text-text-secondary">
-            {props.profile.last_seen_system_name || props.profile.last_seen_system}
+            {props.profile.last_seen_system_name ||
+              props.profile.last_seen_system}
           </span>
         </div>
       )}

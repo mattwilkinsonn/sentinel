@@ -32,6 +32,103 @@ fn extract_item_id_str(v: &serde_json::Value) -> String {
     v.as_str().map(|s| s.to_string()).unwrap_or_default()
 }
 
+/// Load character names from Sui GraphQL for all known profiles.
+pub async fn load_character_names(
+    config: &AppConfig,
+    state: &Arc<RwLock<AppState>>,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    let character_type = format!("{}::character::Character", config.world_package_id);
+    tracing::info!("Loading character names (type: {character_type})");
+
+    let http = reqwest::Client::new();
+    let mut cursor: Option<String> = None;
+    let mut total = 0;
+
+    loop {
+        let after_clause = cursor
+            .as_ref()
+            .map(|c| format!(r#", after: "{}""#, c))
+            .unwrap_or_default();
+
+        let query = format!(
+            r#"{{
+                objects(filter: {{ type: "{character_type}" }}, first: 50{after_clause}) {{
+                    nodes {{
+                        asMoveObject {{
+                            contents {{
+                                json
+                            }}
+                        }}
+                    }}
+                    pageInfo {{
+                        hasNextPage
+                        endCursor
+                    }}
+                }}
+            }}"#
+        );
+
+        let resp = http
+            .post(&config.sui_graphql_url)
+            .json(&serde_json::json!({ "query": query }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = resp.json().await?;
+        let nodes = json["data"]["objects"]["nodes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        if nodes.is_empty() {
+            break;
+        }
+
+        let mut s = state.write().await;
+        for node in &nodes {
+            let contents = &node["asMoveObject"]["contents"]["json"];
+            if contents.is_null() {
+                continue;
+            }
+
+            // Extract item_id and name from character object
+            let item_id =
+                extract_item_id(&contents["key"]).or_else(|| extract_item_id(&contents["item_id"]));
+            let name = contents["name"]
+                .as_str()
+                .or_else(|| contents["display_name"].as_str())
+                .unwrap_or("")
+                .to_string();
+
+            if let Some(id) = item_id {
+                if !name.is_empty() {
+                    s.live.name_cache.insert(id, name.clone());
+                    if let Some(profile) = s.live.profiles.get_mut(&id) {
+                        if profile.name.starts_with("Pilot #") {
+                            profile.name = name;
+                            profile.dirty = true;
+                        }
+                    }
+                    total += 1;
+                }
+            }
+        }
+
+        let page_info = &json["data"]["objects"]["pageInfo"];
+        if !page_info["hasNextPage"].as_bool().unwrap_or(false) {
+            break;
+        }
+        cursor = page_info["endCursor"].as_str().map(|s| s.to_string());
+
+        if total % 100 == 0 && total > 0 {
+            tracing::info!("Loaded {total} character names so far...");
+        }
+    }
+
+    tracing::info!("Character name load complete: {total} names resolved");
+    Ok(total)
+}
+
 /// Load historical killmails from Sui GraphQL and seed live profiles.
 pub async fn load_historical_killmails(
     config: &AppConfig,

@@ -22,9 +22,38 @@ const defaults: ThreatProfile = {
 };
 
 const mockProfiles: ThreatProfile[] = [
-  { ...defaults, character_item_id: 123, name: "Vex Nightburn", threat_score: 8000, kill_count: 100, death_count: 10, bounty_count: 3, recent_kills_24h: 5, systems_visited: 3 },
-  { ...defaults, character_item_id: 456, name: "Kira Ashfall", threat_score: 5000, kill_count: 50, death_count: 20, bounty_count: 1, recent_kills_24h: 2, systems_visited: 5 },
-  { ...defaults, character_item_id: 789, name: "Dread Solaris", threat_score: 3000, kill_count: 30, death_count: 15, recent_kills_24h: 1, systems_visited: 8 },
+  {
+    ...defaults,
+    character_item_id: 123,
+    name: "Vex Nightburn",
+    threat_score: 8000,
+    kill_count: 100,
+    death_count: 10,
+    bounty_count: 3,
+    recent_kills_24h: 5,
+    systems_visited: 3,
+  },
+  {
+    ...defaults,
+    character_item_id: 456,
+    name: "Kira Ashfall",
+    threat_score: 5000,
+    kill_count: 50,
+    death_count: 20,
+    bounty_count: 1,
+    recent_kills_24h: 2,
+    systems_visited: 5,
+  },
+  {
+    ...defaults,
+    character_item_id: 789,
+    name: "Dread Solaris",
+    threat_score: 3000,
+    kill_count: 30,
+    death_count: 15,
+    recent_kills_24h: 1,
+    systems_visited: 8,
+  },
 ];
 
 describe("SentinelFeed", () => {

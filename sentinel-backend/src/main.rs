@@ -59,9 +59,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Load historical killmails from Sui GraphQL
+    // Load historical data from Sui GraphQL
     if let Err(e) = historical::load_historical_killmails(&config, &state).await {
         tracing::warn!("Historical killmail load failed: {e}");
+    }
+    if let Err(e) = historical::load_character_names(&config, &state).await {
+        tracing::warn!("Character name load failed: {e}");
     }
 
     // Sort events newest first after historical load

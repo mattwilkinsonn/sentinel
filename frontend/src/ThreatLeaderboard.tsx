@@ -76,7 +76,9 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                         {profile.name || `Pilot #${profile.character_item_id}`}
                       </span>
                       {profile.tribe_name && (
-                        <span class="text-xs text-text-muted">[{profile.tribe_name}]</span>
+                        <span class="text-xs text-text-muted">
+                          [{profile.tribe_name}]
+                        </span>
                       )}
                       <span
                         class={`badge ${colorClass()}`}
@@ -85,9 +87,7 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                         {tier()}
                       </span>
                       {profile.titles?.slice(0, 2).map((title) => (
-                        <span
-                          class="text-[10px] px-1.5 py-0.5 rounded border border-border-default text-text-muted"
-                        >
+                        <span class="text-[10px] px-1.5 py-0.5 rounded border border-border-default text-text-muted">
                           {title}
                         </span>
                       ))}
@@ -159,7 +159,8 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                       <div class="mt-2 text-xs text-text-muted">
                         Last seen:{" "}
                         <span class="text-text-secondary">
-                          {profile.last_seen_system_name || profile.last_seen_system}
+                          {profile.last_seen_system_name ||
+                            profile.last_seen_system}
                         </span>
                       </div>
                     )}
