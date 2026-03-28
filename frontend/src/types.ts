@@ -36,7 +36,8 @@ export type ScoreBreakdown = {
 export function computeBreakdown(p: ThreatProfile): ScoreBreakdown {
   const kills = Math.min(2000, Math.floor(Math.log2(p.kill_count + 1) * 600));
   const recency = Math.min(3500, p.recent_kills_24h * 600);
-  const kd_ratio = p.death_count > 0 ? p.kill_count / p.death_count : p.kill_count;
+  const kd_ratio =
+    p.death_count > 0 ? p.kill_count / p.death_count : p.kill_count;
   const kd = Math.min(1500, Math.floor(kd_ratio * 400));
   const bounties = Math.min(1500, p.bounty_count * 500);
   const movement = Math.min(500, p.systems_visited * 100);
@@ -54,18 +55,26 @@ export function getThreatTier(score: number): ThreatTier {
 
 export function getThreatColor(tier: ThreatTier): string {
   switch (tier) {
-    case "LOW": return "var(--color-threat-low)";
-    case "MODERATE": return "var(--color-threat-moderate)";
-    case "HIGH": return "var(--color-threat-high)";
-    case "CRITICAL": return "var(--color-threat-critical)";
+    case "LOW":
+      return "var(--color-threat-low)";
+    case "MODERATE":
+      return "var(--color-threat-moderate)";
+    case "HIGH":
+      return "var(--color-threat-high)";
+    case "CRITICAL":
+      return "var(--color-threat-critical)";
   }
 }
 
 export function getThreatColorClass(tier: ThreatTier): string {
   switch (tier) {
-    case "LOW": return "text-threat-low";
-    case "MODERATE": return "text-threat-moderate";
-    case "HIGH": return "text-threat-high";
-    case "CRITICAL": return "text-threat-critical";
+    case "LOW":
+      return "text-threat-low";
+    case "MODERATE":
+      return "text-threat-moderate";
+    case "HIGH":
+      return "text-threat-high";
+    case "CRITICAL":
+      return "text-threat-critical";
   }
 }

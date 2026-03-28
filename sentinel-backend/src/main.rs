@@ -1,12 +1,12 @@
+mod api;
 mod config;
 mod db;
 mod demo;
 mod google_rpc;
 mod grpc;
 mod names;
-mod threat_engine;
 mod publisher;
-mod api;
+mod threat_engine;
 mod types;
 
 use std::sync::Arc;

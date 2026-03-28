@@ -40,8 +40,7 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(3001),
-            database_url: env::var("DATABASE_URL")
-                .expect("DATABASE_URL is required"),
+            database_url: env::var("DATABASE_URL").expect("DATABASE_URL is required"),
         })
     }
 }

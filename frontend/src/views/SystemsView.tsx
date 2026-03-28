@@ -34,7 +34,9 @@ export function SystemsView(props: SystemsViewProps) {
     const result: SystemInfo[] = [];
     for (const [name, data] of map) {
       const totalThreat = data.profiles.reduce((s, p) => s + p.threat_score, 0);
-      const sorted = [...data.profiles].sort((a, b) => b.kill_count - a.kill_count);
+      const sorted = [...data.profiles].sort(
+        (a, b) => b.kill_count - a.kill_count,
+      );
       result.push({
         name,
         characterCount: data.profiles.length,
@@ -51,7 +53,9 @@ export function SystemsView(props: SystemsViewProps) {
     <div>
       <h3 class="text-lg tracking-wider" style="margin-bottom:1rem">
         SYSTEM INTELLIGENCE
-        <span class="text-text-muted text-sm ml-2">{systems().length} systems</span>
+        <span class="text-text-muted text-sm ml-2">
+          {systems().length} systems
+        </span>
       </h3>
 
       <LoadingState
@@ -69,7 +73,10 @@ export function SystemsView(props: SystemsViewProps) {
             const colorClass = () => getThreatColorClass(avgTier());
 
             return (
-              <div class="glass-card p-4" style={{ "border-left": `3px solid ${color()}` }}>
+              <div
+                class="glass-card p-4"
+                style={{ "border-left": `3px solid ${color()}` }}
+              >
                 <div class="flex items-center justify-between mb-2">
                   <div class="flex items-center gap-2">
                     <MapPin size={16} class={colorClass()} />
@@ -88,10 +95,15 @@ export function SystemsView(props: SystemsViewProps) {
 
                 <div class="flex gap-4 text-xs text-text-muted">
                   <span>{system.characterCount} characters</span>
-                  <span>Total threat: {(system.totalThreat / 100).toFixed(0)}</span>
+                  <span>
+                    Total threat: {(system.totalThreat / 100).toFixed(0)}
+                  </span>
                   {system.topKiller && (
                     <span>
-                      Top killer: {system.topKiller.name || `Pilot #${system.topKiller.character_item_id}`} ({system.topKiller.kill_count}K)
+                      Top killer:{" "}
+                      {system.topKiller.name ||
+                        `Pilot #${system.topKiller.character_item_id}`}{" "}
+                      ({system.topKiller.kill_count}K)
                     </span>
                   )}
                 </div>

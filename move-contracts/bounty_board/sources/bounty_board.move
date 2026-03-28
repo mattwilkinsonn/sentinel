@@ -10,576 +10,590 @@
 ///   Claim:  escrow → withdraw_from_open_inventory → deposit_to_owned (hunter)
 ///   Cancel: escrow → withdraw_from_open_inventory → deposit_to_owned (poster refund)
 #[allow(unused_const)]
-module bounty_board::bounty_board;
-
-use bounty_board::config::{Self, AdminCap, ExtensionConfig};
-use std::string::String;
-use sui::clock::Clock;
-use sui::dynamic_field as df;
-use sui::event;
-use world::{
-    access::OwnerCap,
-    character::Character,
-    in_game_id,
-    killmail::Killmail,
-    storage_unit::StorageUnit,
-};
-
-// === Errors ===
-#[error(code = 0)]
-const EBountyNotFound: vector<u8> = b"Bounty not found";
-#[error(code = 1)]
-const ENotPoster: vector<u8> = b"Only the poster can cancel this bounty";
-#[error(code = 2)]
-const EBountyAlreadyClaimed: vector<u8> = b"Bounty has already been claimed";
-#[error(code = 3)]
-const EBountyExpired: vector<u8> = b"Bounty has expired";
-#[error(code = 4)]
-const EKillmailVictimMismatch: vector<u8> = b"Killmail victim does not match bounty target";
-#[error(code = 5)]
-const EKillmailKillerMismatch: vector<u8> = b"Only the killer can claim this bounty";
-#[error(code = 6)]
-const EKillmailTooOld: vector<u8> = b"Killmail is too old";
-#[error(code = 7)]
-const EBoardConfigMissing: vector<u8> = b"Board config not set";
-#[error(code = 8)]
-const EStorageUnitMismatch: vector<u8> = b"Storage unit does not match this board";
-#[error(code = 9)]
-const EBountyNotExpired: vector<u8> = b"Bounty has not expired yet";
-#[error(code = 10)]
-const EInvalidDuration: vector<u8> = b"Duration exceeds maximum allowed";
-#[error(code = 11)]
-const ESenderMismatch: vector<u8> = b"Transaction sender does not match character address";
-#[error(code = 12)]
-const ERewardTypeMismatch: vector<u8> = b"Reward type must match the existing bounty";
-#[error(code = 13)]
-const EBountyNotActive: vector<u8> = b"Cannot add to an expired or claimed bounty";
-#[error(code = 14)]
-const ECannotCancelStackedBounty: vector<u8> = b"Cannot cancel a bounty with multiple contributors";
-#[error(code = 15)]
-const EContributionNotFound: vector<u8> = b"No contribution found for this address";
-
-// === Structs ===
-
-/// Shared object that tracks all bounties for a specific SSU.
-public struct BountyBoard has key {
-    id: UID,
-    next_bounty_id: u64,
-    active_bounty_ids: vector<u64>,
-    storage_unit_id: ID,
-}
-
-public struct Contribution has store, drop, copy {
-    contributor: address,
-    contributor_character_id: ID,
-    amount: u32,
-}
-
-/// Individual bounty stored as a dynamic field on BountyBoard.
-/// Target is stored as raw (item_id, tenant) since TenantItemId cannot be
-/// constructed outside the world package.
-public struct Bounty has store, drop {
-    id: u64,
-    target_item_id: u64,
-    target_tenant: String,
-    reward_type_id: u64,
-    reward_quantity: u32,
-    poster: address,
-    poster_character_id: ID,
-    created_at: u64,
-    expires_at: u64,
-    claimed: bool,
-    claimed_by: Option<address>,
-    claimed_killmail_id: Option<ID>,
-    contributors: vector<Contribution>,
-}
-
-/// Dynamic field key for bounties.
-public struct BountyKey has copy, drop, store { id: u64 }
-
-// === Config ===
-
-/// Admin-configurable board parameters, stored on ExtensionConfig.
-public struct BoardConfig has drop, store {
-    max_bounty_duration_ms: u64,
-    default_bounty_duration_ms: u64,
-    min_killmail_recency_ms: u64,
-}
-
-public struct BoardConfigKey has copy, drop, store {}
-
-// === Events ===
-
-public struct BountyPostedEvent has copy, drop {
-    bounty_id: u64,
-    board_id: ID,
-    target_item_id: u64,
-    target_tenant: String,
-    reward_type_id: u64,
-    reward_quantity: u32,
-    poster: address,
-    expires_at: u64,
-}
-
-public struct BountyClaimedEvent has copy, drop {
-    bounty_id: u64,
-    board_id: ID,
-    hunter: address,
-    killmail_id: ID,
-    reward_type_id: u64,
-    reward_quantity: u32,
-}
-
-public struct BountyCancelledEvent has copy, drop {
-    bounty_id: u64,
-    board_id: ID,
-    poster: address,
-}
-
-public struct BountyStackedEvent has copy, drop {
-    bounty_id: u64,
-    board_id: ID,
-    contributor: address,
-    reward_type_id: u64,
-    reward_quantity_added: u32,
-    new_total_quantity: u32,
-}
-
-public struct ContributionWithdrawnEvent has copy, drop {
-    bounty_id: u64,
-    board_id: ID,
-    contributor: address,
-    amount_withdrawn: u32,
-    remaining_total: u32,
-}
-
-// === Admin Functions ===
-
-/// Create a BountyBoard bound to a specific StorageUnit. Call once after deploy.
-public fun create_board(
-    _admin_cap: &AdminCap,
-    storage_unit_id: ID,
-    ctx: &mut TxContext,
-) {
-    let board = BountyBoard {
-        id: object::new(ctx),
-        next_bounty_id: 1,
-        active_bounty_ids: vector::empty(),
-        storage_unit_id,
-    };
-    transfer::share_object(board);
-}
-
-/// Set or update board configuration.
-public fun set_board_config(
-    extension_config: &mut ExtensionConfig,
-    admin_cap: &AdminCap,
-    max_bounty_duration_ms: u64,
-    default_bounty_duration_ms: u64,
-    min_killmail_recency_ms: u64,
-) {
-    extension_config.set_rule<BoardConfigKey, BoardConfig>(
-        admin_cap,
-        BoardConfigKey {},
-        BoardConfig {
-            max_bounty_duration_ms,
-            default_bounty_duration_ms,
-            min_killmail_recency_ms,
-        },
-    );
-}
-
-// === Player Functions ===
-
-/// Post a bounty. The poster must have reward items in their owned inventory at this SSU.
-/// Withdraws reward from poster's owned inventory and escrows in SSU open inventory.
-public fun post_bounty<T: key>(
-    board: &mut BountyBoard,
-    extension_config: &ExtensionConfig,
-    storage_unit: &mut StorageUnit,
-    character: &Character,
-    owner_cap: &OwnerCap<T>,
-    target_item_id: u64,
-    target_tenant: String,
-    reward_type_id: u64,
-    reward_quantity: u32,
-    duration_ms: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Validate
-    assert!(character.character_address() == ctx.sender(), ESenderMismatch);
-    assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
-    assert!(extension_config.has_rule<BoardConfigKey>(BoardConfigKey {}), EBoardConfigMissing);
-
-    let board_cfg = extension_config.borrow_rule<BoardConfigKey, BoardConfig>(BoardConfigKey {});
-    let actual_duration = if (duration_ms == 0) {
-        board_cfg.default_bounty_duration_ms
-    } else {
-        assert!(duration_ms <= board_cfg.max_bounty_duration_ms, EInvalidDuration);
-        duration_ms
+module bounty_board::bounty_board {
+    use bounty_board::config::{Self, AdminCap, ExtensionConfig};
+    use std::string::String;
+    use sui::{clock::Clock, dynamic_field as df, event};
+    use world::{
+        access::OwnerCap,
+        character::Character,
+        in_game_id,
+        killmail::Killmail,
+        storage_unit::StorageUnit
     };
 
-    let now = clock.timestamp_ms();
-    let expires_at = now + actual_duration;
+    // === Errors ===
+    #[error(code = 0)]
+    const EBountyNotFound: vector<u8> = b"Bounty not found";
+    #[error(code = 1)]
+    const ENotPoster: vector<u8> = b"Only the poster can cancel this bounty";
+    #[error(code = 2)]
+    const EBountyAlreadyClaimed: vector<u8> = b"Bounty has already been claimed";
+    #[error(code = 3)]
+    const EBountyExpired: vector<u8> = b"Bounty has expired";
+    #[error(code = 4)]
+    const EKillmailVictimMismatch: vector<u8> = b"Killmail victim does not match bounty target";
+    #[error(code = 5)]
+    const EKillmailKillerMismatch: vector<u8> = b"Only the killer can claim this bounty";
+    #[error(code = 6)]
+    const EKillmailTooOld: vector<u8> = b"Killmail is too old";
+    #[error(code = 7)]
+    const EBoardConfigMissing: vector<u8> = b"Board config not set";
+    #[error(code = 8)]
+    const EStorageUnitMismatch: vector<u8> = b"Storage unit does not match this board";
+    #[error(code = 9)]
+    const EBountyNotExpired: vector<u8> = b"Bounty has not expired yet";
+    #[error(code = 10)]
+    const EInvalidDuration: vector<u8> = b"Duration exceeds maximum allowed";
+    #[error(code = 11)]
+    const ESenderMismatch: vector<u8> = b"Transaction sender does not match character address";
+    #[error(code = 12)]
+    const ERewardTypeMismatch: vector<u8> = b"Reward type must match the existing bounty";
+    #[error(code = 13)]
+    const EBountyNotActive: vector<u8> = b"Cannot add to an expired or claimed bounty";
+    #[error(code = 14)]
+    const ECannotCancelStackedBounty: vector<u8> =
+        b"Cannot cancel a bounty with multiple contributors";
+    #[error(code = 15)]
+    const EContributionNotFound: vector<u8> = b"No contribution found for this address";
 
-    // Withdraw reward from poster's owned inventory
-    let item = storage_unit.withdraw_by_owner(
-        character,
-        owner_cap,
-        reward_type_id,
-        reward_quantity,
-        ctx,
-    );
+    // === Structs ===
 
-    // Escrow into SSU open inventory
-    storage_unit.deposit_to_open_inventory(
-        character,
-        item,
-        config::x_auth(),
-        ctx,
-    );
+    /// Shared object that tracks all bounties for a specific SSU.
+    public struct BountyBoard has key {
+        id: UID,
+        next_bounty_id: u64,
+        active_bounty_ids: vector<u64>,
+        storage_unit_id: ID,
+    }
 
-    // Record bounty
-    let bounty_id = board.next_bounty_id;
-    board.next_bounty_id = bounty_id + 1;
+    public struct Contribution has copy, drop, store {
+        contributor: address,
+        contributor_character_id: ID,
+        amount: u32,
+    }
 
-    let bounty = Bounty {
-        id: bounty_id,
-        target_item_id,
-        target_tenant,
-        reward_type_id,
-        reward_quantity,
-        poster: ctx.sender(),
-        poster_character_id: character.id(),
-        created_at: now,
-        expires_at,
-        claimed: false,
-        claimed_by: option::none(),
-        claimed_killmail_id: option::none(),
-        contributors: vector[Contribution {
-            contributor: ctx.sender(),
-            contributor_character_id: character.id(),
-            amount: reward_quantity,
-        }],
-    };
+    /// Individual bounty stored as a dynamic field on BountyBoard.
+    /// Target is stored as raw (item_id, tenant) since TenantItemId cannot be
+    /// constructed outside the world package.
+    public struct Bounty has drop, store {
+        id: u64,
+        target_item_id: u64,
+        target_tenant: String,
+        reward_type_id: u64,
+        reward_quantity: u32,
+        poster: address,
+        poster_character_id: ID,
+        created_at: u64,
+        expires_at: u64,
+        claimed: bool,
+        claimed_by: Option<address>,
+        claimed_killmail_id: Option<ID>,
+        contributors: vector<Contribution>,
+    }
 
-    df::add(&mut board.id, BountyKey { id: bounty_id }, bounty);
-    board.active_bounty_ids.push_back(bounty_id);
+    /// Dynamic field key for bounties.
+    public struct BountyKey has copy, drop, store { id: u64 }
 
-    event::emit(BountyPostedEvent {
-        bounty_id,
-        board_id: object::id(board),
-        target_item_id,
-        target_tenant,
-        reward_type_id,
-        reward_quantity,
-        poster: ctx.sender(),
-        expires_at,
-    });
-}
+    // === Config ===
 
-/// Claim a bounty by providing a Killmail proof-of-kill.
-/// The hunter (killer) receives the reward in their owned inventory at this SSU.
-public fun claim_bounty(
-    board: &mut BountyBoard,
-    extension_config: &ExtensionConfig,
-    storage_unit: &mut StorageUnit,
-    hunter_character: &Character,
-    killmail: &Killmail,
-    bounty_id: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
-    assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
+    /// Admin-configurable board parameters, stored on ExtensionConfig.
+    public struct BoardConfig has drop, store {
+        max_bounty_duration_ms: u64,
+        default_bounty_duration_ms: u64,
+        min_killmail_recency_ms: u64,
+    }
 
-    let bounty = df::borrow_mut<BountyKey, Bounty>(&mut board.id, BountyKey { id: bounty_id });
+    public struct BoardConfigKey has copy, drop, store {}
 
-    // Validate bounty state
-    assert!(!bounty.claimed, EBountyAlreadyClaimed);
-    let now = clock.timestamp_ms();
-    assert!(now <= bounty.expires_at, EBountyExpired);
+    // === Events ===
 
-    // Validate killmail victim matches target (compare fields individually)
-    let victim = killmail.victim_id();
-    assert!(
-        in_game_id::item_id(&victim) == bounty.target_item_id &&
+    public struct BountyPostedEvent has copy, drop {
+        bounty_id: u64,
+        board_id: ID,
+        target_item_id: u64,
+        target_tenant: String,
+        reward_type_id: u64,
+        reward_quantity: u32,
+        poster: address,
+        expires_at: u64,
+    }
+
+    public struct BountyClaimedEvent has copy, drop {
+        bounty_id: u64,
+        board_id: ID,
+        hunter: address,
+        killmail_id: ID,
+        reward_type_id: u64,
+        reward_quantity: u32,
+    }
+
+    public struct BountyCancelledEvent has copy, drop {
+        bounty_id: u64,
+        board_id: ID,
+        poster: address,
+    }
+
+    public struct BountyStackedEvent has copy, drop {
+        bounty_id: u64,
+        board_id: ID,
+        contributor: address,
+        reward_type_id: u64,
+        reward_quantity_added: u32,
+        new_total_quantity: u32,
+    }
+
+    public struct ContributionWithdrawnEvent has copy, drop {
+        bounty_id: u64,
+        board_id: ID,
+        contributor: address,
+        amount_withdrawn: u32,
+        remaining_total: u32,
+    }
+
+    // === Admin Functions ===
+
+    /// Create a BountyBoard bound to a specific StorageUnit. Call once after deploy.
+    public fun create_board(_admin_cap: &AdminCap, storage_unit_id: ID, ctx: &mut TxContext) {
+        let board = BountyBoard {
+            id: object::new(ctx),
+            next_bounty_id: 1,
+            active_bounty_ids: vector::empty(),
+            storage_unit_id,
+        };
+        transfer::share_object(board);
+    }
+
+    /// Set or update board configuration.
+    public fun set_board_config(
+        extension_config: &mut ExtensionConfig,
+        admin_cap: &AdminCap,
+        max_bounty_duration_ms: u64,
+        default_bounty_duration_ms: u64,
+        min_killmail_recency_ms: u64,
+    ) {
+        extension_config.set_rule<BoardConfigKey, BoardConfig>(
+            admin_cap,
+            BoardConfigKey {},
+            BoardConfig {
+                max_bounty_duration_ms,
+                default_bounty_duration_ms,
+                min_killmail_recency_ms,
+            },
+        );
+    }
+
+    // === Player Functions ===
+
+    /// Post a bounty. The poster must have reward items in their owned inventory at this SSU.
+    /// Withdraws reward from poster's owned inventory and escrows in SSU open inventory.
+    public fun post_bounty<T: key>(
+        board: &mut BountyBoard,
+        extension_config: &ExtensionConfig,
+        storage_unit: &mut StorageUnit,
+        character: &Character,
+        owner_cap: &OwnerCap<T>,
+        target_item_id: u64,
+        target_tenant: String,
+        reward_type_id: u64,
+        reward_quantity: u32,
+        duration_ms: u64,
+        clock: &Clock,
+        ctx: &mut TxContext,
+    ) {
+        // Validate
+        assert!(character.character_address() == ctx.sender(), ESenderMismatch);
+        assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
+        assert!(extension_config.has_rule<BoardConfigKey>(BoardConfigKey {}), EBoardConfigMissing);
+
+        let board_cfg = extension_config.borrow_rule<
+            BoardConfigKey,
+            BoardConfig,
+        >(BoardConfigKey {});
+        let actual_duration = if (duration_ms == 0) {
+            board_cfg.default_bounty_duration_ms
+        } else {
+            assert!(duration_ms <= board_cfg.max_bounty_duration_ms, EInvalidDuration);
+            duration_ms
+        };
+
+        let now = clock.timestamp_ms();
+        let expires_at = now + actual_duration;
+
+        // Withdraw reward from poster's owned inventory
+        let item = storage_unit.withdraw_by_owner(
+            character,
+            owner_cap,
+            reward_type_id,
+            reward_quantity,
+            ctx,
+        );
+
+        // Escrow into SSU open inventory
+        storage_unit.deposit_to_open_inventory(
+            character,
+            item,
+            config::x_auth(),
+            ctx,
+        );
+
+        // Record bounty
+        let bounty_id = board.next_bounty_id;
+        board.next_bounty_id = bounty_id + 1;
+
+        let bounty = Bounty {
+            id: bounty_id,
+            target_item_id,
+            target_tenant,
+            reward_type_id,
+            reward_quantity,
+            poster: ctx.sender(),
+            poster_character_id: character.id(),
+            created_at: now,
+            expires_at,
+            claimed: false,
+            claimed_by: option::none(),
+            claimed_killmail_id: option::none(),
+            contributors: vector[
+                Contribution {
+                    contributor: ctx.sender(),
+                    contributor_character_id: character.id(),
+                    amount: reward_quantity,
+                },
+            ],
+        };
+
+        df::add(&mut board.id, BountyKey { id: bounty_id }, bounty);
+        board.active_bounty_ids.push_back(bounty_id);
+
+        event::emit(BountyPostedEvent {
+            bounty_id,
+            board_id: object::id(board),
+            target_item_id,
+            target_tenant,
+            reward_type_id,
+            reward_quantity,
+            poster: ctx.sender(),
+            expires_at,
+        });
+    }
+
+    /// Claim a bounty by providing a Killmail proof-of-kill.
+    /// The hunter (killer) receives the reward in their owned inventory at this SSU.
+    public fun claim_bounty(
+        board: &mut BountyBoard,
+        extension_config: &ExtensionConfig,
+        storage_unit: &mut StorageUnit,
+        hunter_character: &Character,
+        killmail: &Killmail,
+        bounty_id: u64,
+        clock: &Clock,
+        ctx: &mut TxContext,
+    ) {
+        assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
+        assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
+
+        let bounty = df::borrow_mut<BountyKey, Bounty>(&mut board.id, BountyKey { id: bounty_id });
+
+        // Validate bounty state
+        assert!(!bounty.claimed, EBountyAlreadyClaimed);
+        let now = clock.timestamp_ms();
+        assert!(now <= bounty.expires_at, EBountyExpired);
+
+        // Validate killmail victim matches target (compare fields individually)
+        let victim = killmail.victim_id();
+        assert!(
+            in_game_id::item_id(&victim) == bounty.target_item_id &&
         in_game_id::tenant(&victim) == bounty.target_tenant,
-        EKillmailVictimMismatch,
-    );
+            EKillmailVictimMismatch,
+        );
 
-    // Validate hunter is the killer
-    assert!(killmail.killer_id() == hunter_character.key(), EKillmailKillerMismatch);
+        // Validate hunter is the killer
+        assert!(killmail.killer_id() == hunter_character.key(), EKillmailKillerMismatch);
 
-    // Validate killmail recency (if configured)
-    if (extension_config.has_rule<BoardConfigKey>(BoardConfigKey {})) {
-        let board_cfg = extension_config.borrow_rule<BoardConfigKey, BoardConfig>(BoardConfigKey {});
-        if (board_cfg.min_killmail_recency_ms > 0) {
-            // kill_timestamp is in seconds, clock is in ms
-            let kill_ts_ms = killmail.kill_timestamp() * 1000;
-            assert!(now - kill_ts_ms <= board_cfg.min_killmail_recency_ms, EKillmailTooOld);
+        // Validate killmail recency (if configured)
+        if (extension_config.has_rule<BoardConfigKey>(BoardConfigKey {})) {
+            let board_cfg = extension_config.borrow_rule<
+                BoardConfigKey,
+                BoardConfig,
+            >(BoardConfigKey {});
+            if (board_cfg.min_killmail_recency_ms > 0) {
+                // kill_timestamp is in seconds, clock is in ms
+                let kill_ts_ms = killmail.kill_timestamp() * 1000;
+                assert!(now - kill_ts_ms <= board_cfg.min_killmail_recency_ms, EKillmailTooOld);
+            };
         };
-    };
 
-    // Mark claimed
-    let reward_type_id = bounty.reward_type_id;
-    let reward_quantity = bounty.reward_quantity;
-    bounty.claimed = true;
-    bounty.claimed_by = option::some(hunter_character.character_address());
-    bounty.claimed_killmail_id = option::some(killmail.id());
+        // Mark claimed
+        let reward_type_id = bounty.reward_type_id;
+        let reward_quantity = bounty.reward_quantity;
+        bounty.claimed = true;
+        bounty.claimed_by = option::some(hunter_character.character_address());
+        bounty.claimed_killmail_id = option::some(killmail.id());
 
-    // Remove from active list
-    remove_from_active(board, bounty_id);
+        // Remove from active list
+        remove_from_active(board, bounty_id);
 
-    // Withdraw reward from escrow (open inventory)
-    let reward_item = storage_unit.withdraw_from_open_inventory(
-        hunter_character,
-        config::x_auth(),
-        reward_type_id,
-        reward_quantity,
-        ctx,
-    );
+        // Withdraw reward from escrow (open inventory)
+        let reward_item = storage_unit.withdraw_from_open_inventory(
+            hunter_character,
+            config::x_auth(),
+            reward_type_id,
+            reward_quantity,
+            ctx,
+        );
 
-    // Deposit reward to hunter's owned inventory
-    storage_unit.deposit_to_owned(
-        hunter_character,
-        reward_item,
-        config::x_auth(),
-        ctx,
-    );
+        // Deposit reward to hunter's owned inventory
+        storage_unit.deposit_to_owned(
+            hunter_character,
+            reward_item,
+            config::x_auth(),
+            ctx,
+        );
 
-    event::emit(BountyClaimedEvent {
-        bounty_id,
-        board_id: object::id(board),
-        hunter: hunter_character.character_address(),
-        killmail_id: killmail.id(),
-        reward_type_id,
-        reward_quantity,
-    });
-}
+        event::emit(BountyClaimedEvent {
+            bounty_id,
+            board_id: object::id(board),
+            hunter: hunter_character.character_address(),
+            killmail_id: killmail.id(),
+            reward_type_id,
+            reward_quantity,
+        });
+    }
 
-/// Cancel a bounty and refund the reward to the poster.
-/// Only the original poster can cancel. Bounty must not be claimed.
-public fun cancel_bounty(
-    board: &mut BountyBoard,
-    storage_unit: &mut StorageUnit,
-    poster_character: &Character,
-    bounty_id: u64,
-    ctx: &mut TxContext,
-) {
-    assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
-    assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
+    /// Cancel a bounty and refund the reward to the poster.
+    /// Only the original poster can cancel. Bounty must not be claimed.
+    public fun cancel_bounty(
+        board: &mut BountyBoard,
+        storage_unit: &mut StorageUnit,
+        poster_character: &Character,
+        bounty_id: u64,
+        ctx: &mut TxContext,
+    ) {
+        assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
+        assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
 
-    let bounty = df::borrow<BountyKey, Bounty>(&board.id, BountyKey { id: bounty_id });
+        let bounty = df::borrow<BountyKey, Bounty>(&board.id, BountyKey { id: bounty_id });
 
-    assert!(!bounty.claimed, EBountyAlreadyClaimed);
-    assert!(bounty.contributors.length() == 1, ECannotCancelStackedBounty);
-    assert!(ctx.sender() == bounty.poster, ENotPoster);
+        assert!(!bounty.claimed, EBountyAlreadyClaimed);
+        assert!(bounty.contributors.length() == 1, ECannotCancelStackedBounty);
+        assert!(ctx.sender() == bounty.poster, ENotPoster);
 
-    let reward_type_id = bounty.reward_type_id;
-    let reward_quantity = bounty.reward_quantity;
+        let reward_type_id = bounty.reward_type_id;
+        let reward_quantity = bounty.reward_quantity;
 
-    // Remove bounty
-    let _bounty: Bounty = df::remove(&mut board.id, BountyKey { id: bounty_id });
-    remove_from_active(board, bounty_id);
-
-    // Withdraw from escrow
-    let reward_item = storage_unit.withdraw_from_open_inventory(
-        poster_character,
-        config::x_auth(),
-        reward_type_id,
-        reward_quantity,
-        ctx,
-    );
-
-    // Refund to poster's owned inventory
-    storage_unit.deposit_to_owned(
-        poster_character,
-        reward_item,
-        config::x_auth(),
-        ctx,
-    );
-
-    event::emit(BountyCancelledEvent {
-        bounty_id,
-        board_id: object::id(board),
-        poster: ctx.sender(),
-    });
-}
-
-/// Add more reward to an existing bounty. The contributor must deposit the same
-/// reward type. Their contribution is tracked for potential withdrawal.
-public fun add_to_bounty<T: key>(
-    board: &mut BountyBoard,
-    extension_config: &ExtensionConfig,
-    storage_unit: &mut StorageUnit,
-    character: &Character,
-    owner_cap: &OwnerCap<T>,
-    bounty_id: u64,
-    reward_quantity: u32,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    // Validate
-    assert!(character.character_address() == ctx.sender(), ESenderMismatch);
-    assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
-    assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
-
-    let bounty = df::borrow_mut<BountyKey, Bounty>(&mut board.id, BountyKey { id: bounty_id });
-
-    // Bounty must be active
-    assert!(!bounty.claimed, EBountyNotActive);
-    let now = clock.timestamp_ms();
-    assert!(now <= bounty.expires_at, EBountyNotActive);
-
-    let reward_type_id = bounty.reward_type_id;
-
-    // Withdraw reward from contributor's owned inventory
-    let item = storage_unit.withdraw_by_owner(
-        character,
-        owner_cap,
-        reward_type_id,
-        reward_quantity,
-        ctx,
-    );
-
-    // Escrow into SSU open inventory
-    storage_unit.deposit_to_open_inventory(
-        character,
-        item,
-        config::x_auth(),
-        ctx,
-    );
-
-    // Update bounty
-    bounty.reward_quantity = bounty.reward_quantity + reward_quantity;
-    bounty.contributors.push_back(Contribution {
-        contributor: ctx.sender(),
-        contributor_character_id: character.id(),
-        amount: reward_quantity,
-    });
-
-    let new_total_quantity = bounty.reward_quantity;
-
-    event::emit(BountyStackedEvent {
-        bounty_id,
-        board_id: object::id(board),
-        contributor: ctx.sender(),
-        reward_type_id,
-        reward_quantity_added: reward_quantity,
-        new_total_quantity,
-    });
-}
-
-/// Withdraw a contributor's own stake from a bounty.
-/// If the last contribution is removed, the bounty is deleted entirely.
-public fun withdraw_my_contribution(
-    board: &mut BountyBoard,
-    storage_unit: &mut StorageUnit,
-    character: &Character,
-    bounty_id: u64,
-    ctx: &mut TxContext,
-) {
-    assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
-    assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
-
-    let bounty = df::borrow_mut<BountyKey, Bounty>(&mut board.id, BountyKey { id: bounty_id });
-    assert!(!bounty.claimed, EBountyAlreadyClaimed);
-
-    // Find the caller's contribution
-    let sender = ctx.sender();
-    let len = bounty.contributors.length();
-    let mut found_idx: u64 = len; // sentinel
-    let mut i: u64 = 0;
-    while (i < len) {
-        if (bounty.contributors[i].contributor == sender) {
-            found_idx = i;
-            break
-        };
-        i = i + 1;
-    };
-    assert!(found_idx < len, EContributionNotFound);
-
-    let contribution = bounty.contributors.swap_remove(found_idx);
-    let amount = contribution.amount;
-    let reward_type_id = bounty.reward_type_id;
-    bounty.reward_quantity = bounty.reward_quantity - amount;
-
-    let remaining_total = bounty.reward_quantity;
-    let contributors_empty = bounty.contributors.is_empty();
-    let board_id = object::id(board);
-
-    // Withdraw from escrow and refund to caller
-    let reward_item = storage_unit.withdraw_from_open_inventory(
-        character,
-        config::x_auth(),
-        reward_type_id,
-        amount,
-        ctx,
-    );
-
-    storage_unit.deposit_to_owned(
-        character,
-        reward_item,
-        config::x_auth(),
-        ctx,
-    );
-
-    // If no contributors remain, remove the bounty entirely
-    if (contributors_empty) {
+        // Remove bounty
         let _bounty: Bounty = df::remove(&mut board.id, BountyKey { id: bounty_id });
         remove_from_active(board, bounty_id);
-    };
 
-    event::emit(ContributionWithdrawnEvent {
-        bounty_id,
-        board_id,
-        contributor: sender,
-        amount_withdrawn: amount,
-        remaining_total,
-    });
-}
+        // Withdraw from escrow
+        let reward_item = storage_unit.withdraw_from_open_inventory(
+            poster_character,
+            config::x_auth(),
+            reward_type_id,
+            reward_quantity,
+            ctx,
+        );
 
-// === View Functions ===
+        // Refund to poster's owned inventory
+        storage_unit.deposit_to_owned(
+            poster_character,
+            reward_item,
+            config::x_auth(),
+            ctx,
+        );
 
-public fun bounty_count(board: &BountyBoard): u64 {
-    board.active_bounty_ids.length()
-}
+        event::emit(BountyCancelledEvent {
+            bounty_id,
+            board_id: object::id(board),
+            poster: ctx.sender(),
+        });
+    }
 
-public fun active_bounty_ids(board: &BountyBoard): &vector<u64> {
-    &board.active_bounty_ids
-}
+    /// Add more reward to an existing bounty. The contributor must deposit the same
+    /// reward type. Their contribution is tracked for potential withdrawal.
+    public fun add_to_bounty<T: key>(
+        board: &mut BountyBoard,
+        extension_config: &ExtensionConfig,
+        storage_unit: &mut StorageUnit,
+        character: &Character,
+        owner_cap: &OwnerCap<T>,
+        bounty_id: u64,
+        reward_quantity: u32,
+        clock: &Clock,
+        ctx: &mut TxContext,
+    ) {
+        // Validate
+        assert!(character.character_address() == ctx.sender(), ESenderMismatch);
+        assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
+        assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
 
-public fun storage_unit_id(board: &BountyBoard): ID {
-    board.storage_unit_id
-}
+        let bounty = df::borrow_mut<BountyKey, Bounty>(&mut board.id, BountyKey { id: bounty_id });
 
-public fun get_bounty(board: &BountyBoard, bounty_id: u64): &Bounty {
-    assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
-    df::borrow(&board.id, BountyKey { id: bounty_id })
-}
+        // Bounty must be active
+        assert!(!bounty.claimed, EBountyNotActive);
+        let now = clock.timestamp_ms();
+        assert!(now <= bounty.expires_at, EBountyNotActive);
 
-public fun bounty_target_item_id(bounty: &Bounty): u64 { bounty.target_item_id }
-public fun bounty_target_tenant(bounty: &Bounty): String { bounty.target_tenant }
-public fun bounty_reward_type_id(bounty: &Bounty): u64 { bounty.reward_type_id }
-public fun bounty_reward_quantity(bounty: &Bounty): u32 { bounty.reward_quantity }
-public fun bounty_poster(bounty: &Bounty): address { bounty.poster }
-public fun bounty_expires_at(bounty: &Bounty): u64 { bounty.expires_at }
-public fun bounty_is_claimed(bounty: &Bounty): bool { bounty.claimed }
-public fun bounty_contributors(bounty: &Bounty): &vector<Contribution> { &bounty.contributors }
-public fun contribution_contributor(c: &Contribution): address { c.contributor }
-public fun contribution_amount(c: &Contribution): u32 { c.amount }
+        let reward_type_id = bounty.reward_type_id;
 
-public fun is_active(bounty: &Bounty, clock: &Clock): bool {
-    !bounty.claimed && clock.timestamp_ms() <= bounty.expires_at
-}
+        // Withdraw reward from contributor's owned inventory
+        let item = storage_unit.withdraw_by_owner(
+            character,
+            owner_cap,
+            reward_type_id,
+            reward_quantity,
+            ctx,
+        );
 
-// === Private Helpers ===
+        // Escrow into SSU open inventory
+        storage_unit.deposit_to_open_inventory(
+            character,
+            item,
+            config::x_auth(),
+            ctx,
+        );
 
-fun remove_from_active(board: &mut BountyBoard, bounty_id: u64) {
-    let (found, idx) = board.active_bounty_ids.index_of(&bounty_id);
-    if (found) {
-        board.active_bounty_ids.swap_remove(idx);
-    };
+        // Update bounty
+        bounty.reward_quantity = bounty.reward_quantity + reward_quantity;
+        bounty
+            .contributors
+            .push_back(Contribution {
+                contributor: ctx.sender(),
+                contributor_character_id: character.id(),
+                amount: reward_quantity,
+            });
+
+        let new_total_quantity = bounty.reward_quantity;
+
+        event::emit(BountyStackedEvent {
+            bounty_id,
+            board_id: object::id(board),
+            contributor: ctx.sender(),
+            reward_type_id,
+            reward_quantity_added: reward_quantity,
+            new_total_quantity,
+        });
+    }
+
+    /// Withdraw a contributor's own stake from a bounty.
+    /// If the last contribution is removed, the bounty is deleted entirely.
+    public fun withdraw_my_contribution(
+        board: &mut BountyBoard,
+        storage_unit: &mut StorageUnit,
+        character: &Character,
+        bounty_id: u64,
+        ctx: &mut TxContext,
+    ) {
+        assert!(object::id(storage_unit) == board.storage_unit_id, EStorageUnitMismatch);
+        assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
+
+        let bounty = df::borrow_mut<BountyKey, Bounty>(&mut board.id, BountyKey { id: bounty_id });
+        assert!(!bounty.claimed, EBountyAlreadyClaimed);
+
+        // Find the caller's contribution
+        let sender = ctx.sender();
+        let len = bounty.contributors.length();
+        let mut found_idx: u64 = len; // sentinel
+        let mut i: u64 = 0;
+        while (i < len) {
+            if (bounty.contributors[i].contributor == sender) {
+                found_idx = i;
+                break
+            };
+            i = i + 1;
+        };
+        assert!(found_idx < len, EContributionNotFound);
+
+        let contribution = bounty.contributors.swap_remove(found_idx);
+        let amount = contribution.amount;
+        let reward_type_id = bounty.reward_type_id;
+        bounty.reward_quantity = bounty.reward_quantity - amount;
+
+        let remaining_total = bounty.reward_quantity;
+        let contributors_empty = bounty.contributors.is_empty();
+        let board_id = object::id(board);
+
+        // Withdraw from escrow and refund to caller
+        let reward_item = storage_unit.withdraw_from_open_inventory(
+            character,
+            config::x_auth(),
+            reward_type_id,
+            amount,
+            ctx,
+        );
+
+        storage_unit.deposit_to_owned(
+            character,
+            reward_item,
+            config::x_auth(),
+            ctx,
+        );
+
+        // If no contributors remain, remove the bounty entirely
+        if (contributors_empty) {
+            let _bounty: Bounty = df::remove(&mut board.id, BountyKey { id: bounty_id });
+            remove_from_active(board, bounty_id);
+        };
+
+        event::emit(ContributionWithdrawnEvent {
+            bounty_id,
+            board_id,
+            contributor: sender,
+            amount_withdrawn: amount,
+            remaining_total,
+        });
+    }
+
+    // === View Functions ===
+
+    public fun bounty_count(board: &BountyBoard): u64 {
+        board.active_bounty_ids.length()
+    }
+
+    public fun active_bounty_ids(board: &BountyBoard): &vector<u64> {
+        &board.active_bounty_ids
+    }
+
+    public fun storage_unit_id(board: &BountyBoard): ID {
+        board.storage_unit_id
+    }
+
+    public fun get_bounty(board: &BountyBoard, bounty_id: u64): &Bounty {
+        assert!(df::exists_(&board.id, BountyKey { id: bounty_id }), EBountyNotFound);
+        df::borrow(&board.id, BountyKey { id: bounty_id })
+    }
+
+    public fun bounty_target_item_id(bounty: &Bounty): u64 { bounty.target_item_id }
+
+    public fun bounty_target_tenant(bounty: &Bounty): String { bounty.target_tenant }
+
+    public fun bounty_reward_type_id(bounty: &Bounty): u64 { bounty.reward_type_id }
+
+    public fun bounty_reward_quantity(bounty: &Bounty): u32 { bounty.reward_quantity }
+
+    public fun bounty_poster(bounty: &Bounty): address { bounty.poster }
+
+    public fun bounty_expires_at(bounty: &Bounty): u64 { bounty.expires_at }
+
+    public fun bounty_is_claimed(bounty: &Bounty): bool { bounty.claimed }
+
+    public fun bounty_contributors(bounty: &Bounty): &vector<Contribution> { &bounty.contributors }
+
+    public fun contribution_contributor(c: &Contribution): address { c.contributor }
+
+    public fun contribution_amount(c: &Contribution): u32 { c.amount }
+
+    public fun is_active(bounty: &Bounty, clock: &Clock): bool {
+        !bounty.claimed && clock.timestamp_ms() <= bounty.expires_at
+    }
+
+    // === Private Helpers ===
+
+    fun remove_from_active(board: &mut BountyBoard, bounty_id: u64) {
+        let (found, idx) = board.active_bounty_ids.index_of(&bounty_id);
+        if (found) {
+            board.active_bounty_ids.swap_remove(idx);
+        };
+    }
 }

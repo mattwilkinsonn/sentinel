@@ -17,7 +17,8 @@ export function StatsBar(props: StatsBarProps) {
       icon: Radio,
       color: "text-accent-green",
       view: "feed" as SubView,
-      tooltip: "Events processed in the last 60 seconds. Click to view the live intel feed.",
+      tooltip:
+        "Events processed in the last 60 seconds. Click to view the live intel feed.",
     },
     {
       label: "AVG THREAT",
@@ -25,7 +26,8 @@ export function StatsBar(props: StatsBarProps) {
       icon: Activity,
       color: "text-accent-gold",
       view: "leaderboard" as SubView,
-      tooltip: "Average threat score across all tracked pilots (0-100). Click to view the threat leaderboard.",
+      tooltip:
+        "Average threat score across all tracked pilots (0-100). Click to view the threat leaderboard.",
     },
     {
       label: "TRACKED",
@@ -49,7 +51,8 @@ export function StatsBar(props: StatsBarProps) {
       icon: MapPin,
       color: "text-accent-purple",
       view: "systems" as SubView,
-      tooltip: "The solar system with the most tracked pilots. Click to view system intelligence.",
+      tooltip:
+        "The solar system with the most tracked pilots. Click to view system intelligence.",
     },
   ];
 
@@ -67,7 +70,9 @@ export function StatsBar(props: StatsBarProps) {
           >
             <div class="flex items-center gap-2 mb-1">
               <item.icon size={14} class={item.color} />
-              <span class="text-xs text-text-muted tracking-wider">{item.label}</span>
+              <span class="text-xs text-text-muted tracking-wider">
+                {item.label}
+              </span>
             </div>
             <div class={`text-xl font-bold ${item.color}`}>{item.value}</div>
           </button>

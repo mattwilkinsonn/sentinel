@@ -86,21 +86,41 @@ scripts-install:
 script name:
     cd ts-scripts && bun run {{name}}.ts
 
-# === Formatting ===
+# === Formatting & Linting ===
 
-# Format Move contracts
+# Format everything
+fmt: fmt-rust fmt-ts fmt-move
+
+# Format Rust
+fmt-rust:
+    cd sentinel-backend && cargo fmt
+
+# Format Move contracts (prettier + Sui plugin)
 fmt-move:
     cd ts-scripts && bun run fmt:move
 
-# Format TypeScript (scripts + frontend)
+# Format TypeScript (Biome)
 fmt-ts:
-    cd ts-scripts && bun run fmt:ts
-    cd frontend && bun run fmt
+    bunx biome format --write .
 
-# Check formatting
-fmt-check:
-    cd ts-scripts && bun run fmt:check
-    cd frontend && bun run fmt:check
+# Lint TypeScript (Biome)
+lint:
+    bunx biome lint .
+
+# Check everything (formatting + linting)
+check: check-rust check-ts check-move
+
+# Check Rust formatting
+check-rust:
+    cd sentinel-backend && cargo fmt -- --check
+
+# Check TypeScript (Biome lint + format)
+check-ts:
+    bunx biome check .
+
+# Check Move formatting
+check-move:
+    cd ts-scripts && bun run fmt:move:check
 
 # === Full Stack ===
 

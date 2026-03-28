@@ -36,7 +36,9 @@ export function ThreatCard(props: ThreatCardProps) {
           <h4 class="text-lg tracking-wider">
             {props.profile.name || `Pilot #${props.profile.character_item_id}`}
           </h4>
-          <span class="text-xs text-text-muted">#{props.profile.character_item_id}</span>
+          <span class="text-xs text-text-muted">
+            #{props.profile.character_item_id}
+          </span>
           <div class="flex items-center gap-2 mt-1">
             <span
               class={`badge ${colorClass()}`}
@@ -44,7 +46,9 @@ export function ThreatCard(props: ThreatCardProps) {
             >
               {tier()} THREAT
             </span>
-            <span class={`text-2xl font-bold ${colorClass()}`}>{scoreDisplay()}</span>
+            <span class={`text-2xl font-bold ${colorClass()}`}>
+              {scoreDisplay()}
+            </span>
           </div>
         </div>
         <button
@@ -57,7 +61,9 @@ export function ThreatCard(props: ThreatCardProps) {
 
       {/* Score bar */}
       <div style="height:10px;border-radius:5px;background:rgba(250,250,229,0.08);overflow:hidden;margin-bottom:1rem">
-        <div style={`width:${props.profile.threat_score / 100}%;height:10px;border-radius:5px;background:${color()}`} />
+        <div
+          style={`width:${props.profile.threat_score / 100}%;height:10px;border-radius:5px;background:${color()}`}
+        />
       </div>
 
       {/* Stats grid */}
@@ -102,7 +108,10 @@ export function ThreatCard(props: ThreatCardProps) {
 
       {props.profile.last_seen_system && (
         <div class="mt-3 text-xs text-text-muted">
-          Last seen in system: <span class="text-text-secondary">{props.profile.last_seen_system}</span>
+          Last seen in system:{" "}
+          <span class="text-text-secondary">
+            {props.profile.last_seen_system}
+          </span>
         </div>
       )}
     </div>

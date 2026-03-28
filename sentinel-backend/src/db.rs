@@ -1,5 +1,5 @@
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 
 use crate::types::{DataStore, RawEvent, ThreatProfile};
 
@@ -75,11 +75,10 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
 
 /// Load the last checkpoint cursor.
 pub async fn load_checkpoint(pool: &PgPool) -> Result<Option<u64>, sqlx::Error> {
-    let row = sqlx::query_scalar::<_, i64>(
-        "SELECT last_checkpoint FROM checkpoint_cursor WHERE id = 1",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let row =
+        sqlx::query_scalar::<_, i64>("SELECT last_checkpoint FROM checkpoint_cursor WHERE id = 1")
+            .fetch_optional(pool)
+            .await?;
     Ok(row.map(|v| v as u64))
 }
 
@@ -120,14 +119,12 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
 
 /// Insert a raw event.
 pub async fn insert_event(pool: &PgPool, e: &RawEvent) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO raw_events (event_type, timestamp_ms, data) VALUES ($1, $2, $3)",
-    )
-    .bind(&e.event_type)
-    .bind(e.timestamp_ms as i64)
-    .bind(&e.data)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO raw_events (event_type, timestamp_ms, data) VALUES ($1, $2, $3)")
+        .bind(&e.event_type)
+        .bind(e.timestamp_ms as i64)
+        .bind(&e.data)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

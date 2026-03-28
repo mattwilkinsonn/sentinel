@@ -28,7 +28,11 @@ describe("ThreatLeaderboard", () => {
     ];
 
     render(() => (
-      <ThreatLeaderboard profiles={profiles} onSelect={() => {}} selectedId={null} />
+      <ThreatLeaderboard
+        profiles={profiles}
+        onSelect={() => {}}
+        selectedId={null}
+      />
     ));
 
     // All three should render
@@ -46,7 +50,11 @@ describe("ThreatLeaderboard", () => {
     ];
 
     render(() => (
-      <ThreatLeaderboard profiles={profiles} onSelect={() => {}} selectedId={null} />
+      <ThreatLeaderboard
+        profiles={profiles}
+        onSelect={() => {}}
+        selectedId={null}
+      />
     ));
 
     expect(screen.getByText("LOW")).toBeTruthy();
@@ -57,11 +65,15 @@ describe("ThreatLeaderboard", () => {
 
   it("limits to top 20", () => {
     const profiles = Array.from({ length: 25 }, (_, i) =>
-      makeProfile({ character_item_id: i + 1, threat_score: 10000 - i * 100 })
+      makeProfile({ character_item_id: i + 1, threat_score: 10000 - i * 100 }),
     );
 
     render(() => (
-      <ThreatLeaderboard profiles={profiles} onSelect={() => {}} selectedId={null} />
+      <ThreatLeaderboard
+        profiles={profiles}
+        onSelect={() => {}}
+        selectedId={null}
+      />
     ));
 
     expect(screen.getByText("TOP 20")).toBeTruthy();
@@ -73,10 +85,16 @@ describe("ThreatLeaderboard", () => {
     const profiles = [makeProfile({ character_item_id: 42 })];
 
     render(() => (
-      <ThreatLeaderboard profiles={profiles} onSelect={onSelect} selectedId={null} />
+      <ThreatLeaderboard
+        profiles={profiles}
+        onSelect={onSelect}
+        selectedId={null}
+      />
     ));
 
-    (screen.getByText("Pilot #42").closest("[class*=glass-card]") as HTMLElement)!.click();
+    (screen
+      .getByText("Pilot #42")
+      .closest("[class*=glass-card]") as HTMLElement)!.click();
     expect(onSelect).toHaveBeenCalledWith(42);
   });
 
@@ -86,7 +104,11 @@ describe("ThreatLeaderboard", () => {
     ];
 
     render(() => (
-      <ThreatLeaderboard profiles={profiles} onSelect={() => {}} selectedId={null} />
+      <ThreatLeaderboard
+        profiles={profiles}
+        onSelect={() => {}}
+        selectedId={null}
+      />
     ));
 
     expect(screen.getByText("K/D 5.0 · 100K")).toBeTruthy();
@@ -98,7 +120,11 @@ describe("ThreatLeaderboard", () => {
     ];
 
     render(() => (
-      <ThreatLeaderboard profiles={profiles} onSelect={() => {}} selectedId={null} />
+      <ThreatLeaderboard
+        profiles={profiles}
+        onSelect={() => {}}
+        selectedId={null}
+      />
     ));
 
     expect(screen.getByText("K/D 50.0 · 50K")).toBeTruthy();

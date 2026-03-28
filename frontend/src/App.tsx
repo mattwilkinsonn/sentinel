@@ -44,16 +44,23 @@ export default function App() {
             </button>
           </div>
 
-          <Tooltip text={mode() === "demo" ? "Showing simulated data. Click to switch to live blockchain events." : "Streaming live events from Sui. Click to switch to demo data."}>
+          <Tooltip
+            text={
+              mode() === "demo"
+                ? "Showing simulated data. Click to switch to live blockchain events."
+                : "Streaming live events from Sui. Click to switch to demo data."
+            }
+          >
             <button
               onClick={toggleMode}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-xs transition-all bg-transparent border border-border-default hover:border-border-hover"
             >
               <div
                 class={mode() === "live" ? "live-dot" : ""}
-                style={mode() === "live"
-                  ? ""
-                  : "width:8px;height:8px;border-radius:50%;background:var(--color-text-muted)"
+                style={
+                  mode() === "live"
+                    ? ""
+                    : "width:8px;height:8px;border-radius:50%;background:var(--color-text-muted)"
                 }
               />
               {mode() === "demo" ? "DEMO" : "LIVE"}

@@ -48,7 +48,11 @@ pub struct DataStore {
 }
 
 impl DataStore {
-    pub fn push_event(&mut self, event: RawEvent, sse_tx: &Option<tokio::sync::broadcast::Sender<String>>) {
+    pub fn push_event(
+        &mut self,
+        event: RawEvent,
+        sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+    ) {
         if let Some(tx) = sse_tx {
             if let Ok(json) = serde_json::to_string(&event) {
                 let _ = tx.send(json);
@@ -118,16 +122,22 @@ mod tests {
     fn push_event_prepends_to_front() {
         let mut store = DataStore::default();
         let no_sse: Option<tokio::sync::broadcast::Sender<String>> = None;
-        store.push_event(RawEvent {
-            event_type: "kill".into(),
-            timestamp_ms: 1000,
-            data: serde_json::json!({}),
-        }, &no_sse);
-        store.push_event(RawEvent {
-            event_type: "jump".into(),
-            timestamp_ms: 2000,
-            data: serde_json::json!({}),
-        }, &no_sse);
+        store.push_event(
+            RawEvent {
+                event_type: "kill".into(),
+                timestamp_ms: 1000,
+                data: serde_json::json!({}),
+            },
+            &no_sse,
+        );
+        store.push_event(
+            RawEvent {
+                event_type: "jump".into(),
+                timestamp_ms: 2000,
+                data: serde_json::json!({}),
+            },
+            &no_sse,
+        );
 
         assert_eq!(store.recent_events.len(), 2);
         assert_eq!(store.recent_events[0].event_type, "jump");
@@ -139,11 +149,14 @@ mod tests {
         let mut store = DataStore::default();
         let no_sse: Option<tokio::sync::broadcast::Sender<String>> = None;
         for i in 0..250 {
-            store.push_event(RawEvent {
-                event_type: "kill".into(),
-                timestamp_ms: i,
-                data: serde_json::json!({}),
-            }, &no_sse);
+            store.push_event(
+                RawEvent {
+                    event_type: "kill".into(),
+                    timestamp_ms: i,
+                    data: serde_json::json!({}),
+                },
+                &no_sse,
+            );
         }
         assert_eq!(store.recent_events.len(), 200);
         assert_eq!(store.recent_events[0].timestamp_ms, 249);
@@ -162,8 +175,20 @@ mod tests {
     #[test]
     fn compute_stats_avg_score() {
         let mut store = DataStore::default();
-        store.profiles.insert(1, ThreatProfile { threat_score: 6000, ..Default::default() });
-        store.profiles.insert(2, ThreatProfile { threat_score: 4000, ..Default::default() });
+        store.profiles.insert(
+            1,
+            ThreatProfile {
+                threat_score: 6000,
+                ..Default::default()
+            },
+        );
+        store.profiles.insert(
+            2,
+            ThreatProfile {
+                threat_score: 4000,
+                ..Default::default()
+            },
+        );
         let stats = store.compute_stats();
         assert_eq!(stats.total_tracked, 2);
         assert_eq!(stats.avg_score, 5000);
@@ -172,8 +197,20 @@ mod tests {
     #[test]
     fn compute_stats_kills_24h() {
         let mut store = DataStore::default();
-        store.profiles.insert(1, ThreatProfile { recent_kills_24h: 5, ..Default::default() });
-        store.profiles.insert(2, ThreatProfile { recent_kills_24h: 3, ..Default::default() });
+        store.profiles.insert(
+            1,
+            ThreatProfile {
+                recent_kills_24h: 5,
+                ..Default::default()
+            },
+        );
+        store.profiles.insert(
+            2,
+            ThreatProfile {
+                recent_kills_24h: 3,
+                ..Default::default()
+            },
+        );
         let stats = store.compute_stats();
         assert_eq!(stats.kills_24h, 8);
     }
@@ -181,9 +218,27 @@ mod tests {
     #[test]
     fn compute_stats_top_system() {
         let mut store = DataStore::default();
-        store.profiles.insert(1, ThreatProfile { last_seen_system: "J-1042".into(), ..Default::default() });
-        store.profiles.insert(2, ThreatProfile { last_seen_system: "X-4419".into(), ..Default::default() });
-        store.profiles.insert(3, ThreatProfile { last_seen_system: "J-1042".into(), ..Default::default() });
+        store.profiles.insert(
+            1,
+            ThreatProfile {
+                last_seen_system: "J-1042".into(),
+                ..Default::default()
+            },
+        );
+        store.profiles.insert(
+            2,
+            ThreatProfile {
+                last_seen_system: "X-4419".into(),
+                ..Default::default()
+            },
+        );
+        store.profiles.insert(
+            3,
+            ThreatProfile {
+                last_seen_system: "J-1042".into(),
+                ..Default::default()
+            },
+        );
         let stats = store.compute_stats();
         assert_eq!(stats.top_system, "J-1042");
     }
@@ -191,15 +246,31 @@ mod tests {
     #[test]
     fn compute_stats_ignores_empty_systems() {
         let mut store = DataStore::default();
-        store.profiles.insert(1, ThreatProfile { last_seen_system: "".into(), ..Default::default() });
-        store.profiles.insert(2, ThreatProfile { last_seen_system: "K-9731".into(), ..Default::default() });
+        store.profiles.insert(
+            1,
+            ThreatProfile {
+                last_seen_system: "".into(),
+                ..Default::default()
+            },
+        );
+        store.profiles.insert(
+            2,
+            ThreatProfile {
+                last_seen_system: "K-9731".into(),
+                ..Default::default()
+            },
+        );
         let stats = store.compute_stats();
         assert_eq!(stats.top_system, "K-9731");
     }
 
     #[test]
     fn dirty_flag_not_serialized() {
-        let p = ThreatProfile { dirty: true, threat_score: 5000, ..Default::default() };
+        let p = ThreatProfile {
+            dirty: true,
+            threat_score: 5000,
+            ..Default::default()
+        };
         let json = serde_json::to_string(&p).unwrap();
         assert!(!json.contains("dirty"));
         assert!(json.contains("threat_score"));
@@ -211,11 +282,14 @@ mod tests {
         let mut store = DataStore::default();
         let sse: Option<tokio::sync::broadcast::Sender<String>> = Some(tx);
 
-        store.push_event(RawEvent {
-            event_type: "kill".into(),
-            timestamp_ms: 1000,
-            data: serde_json::json!({"killer": 42}),
-        }, &sse);
+        store.push_event(
+            RawEvent {
+                event_type: "kill".into(),
+                timestamp_ms: 1000,
+                data: serde_json::json!({"killer": 42}),
+            },
+            &sse,
+        );
 
         let msg = rx.try_recv().unwrap();
         assert!(msg.contains("kill"));

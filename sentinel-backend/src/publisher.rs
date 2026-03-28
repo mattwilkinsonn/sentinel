@@ -15,9 +15,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
     let interval = std::time::Duration::from_millis(config.publish_interval_ms);
 
     if config.sentinel_package_id.is_empty() || config.threat_registry_id.is_empty() {
-        tracing::warn!(
-            "SENTINEL_PACKAGE_ID or THREAT_REGISTRY_ID not set — publisher disabled"
-        );
+        tracing::warn!("SENTINEL_PACKAGE_ID or THREAT_REGISTRY_ID not set — publisher disabled");
         return;
     }
 
@@ -37,7 +35,8 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         let dirty_profiles = {
             let mut state = state.write().await;
             let dirty: Vec<_> = state
-                .live.profiles
+                .live
+                .profiles
                 .values()
                 .filter(|p| p.dirty)
                 .cloned()
@@ -59,10 +58,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         for chunk in dirty_profiles.chunks(50) {
             match publish_batch_grpc(&config, chunk).await {
                 Ok(digest) => {
-                    tracing::info!(
-                        "Published {} threat scores — tx: {digest}",
-                        chunk.len()
-                    );
+                    tracing::info!("Published {} threat scores — tx: {digest}", chunk.len());
                 }
                 Err(e) => {
                     tracing::error!("Failed to publish batch: {e}");

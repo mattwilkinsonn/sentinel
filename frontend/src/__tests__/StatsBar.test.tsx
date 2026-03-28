@@ -13,7 +13,11 @@ describe("StatsBar", () => {
 
   it("renders all five stat cards", () => {
     render(() => (
-      <StatsBar stats={mockStats} activeView="leaderboard" onStatClick={() => {}} />
+      <StatsBar
+        stats={mockStats}
+        activeView="leaderboard"
+        onStatClick={() => {}}
+      />
     ));
 
     expect(screen.getByText("TRACKED")).toBeTruthy();
@@ -25,7 +29,11 @@ describe("StatsBar", () => {
 
   it("displays correct values", () => {
     render(() => (
-      <StatsBar stats={mockStats} activeView="leaderboard" onStatClick={() => {}} />
+      <StatsBar
+        stats={mockStats}
+        activeView="leaderboard"
+        onStatClick={() => {}}
+      />
     ));
 
     expect(screen.getByText("42")).toBeTruthy();
@@ -49,7 +57,11 @@ describe("StatsBar", () => {
   it("calls onStatClick with correct view", () => {
     const onClick = vi.fn();
     render(() => (
-      <StatsBar stats={mockStats} activeView="leaderboard" onStatClick={onClick} />
+      <StatsBar
+        stats={mockStats}
+        activeView="leaderboard"
+        onStatClick={onClick}
+      />
     ));
 
     screen.getByText("TRACKED").closest("button")!.click();

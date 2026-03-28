@@ -4,9 +4,42 @@ import { SentinelFeed } from "../SentinelFeed";
 import type { RawEvent, ThreatProfile } from "../types";
 
 const mockProfiles: ThreatProfile[] = [
-  { character_item_id: 123, name: "Vex Nightburn", threat_score: 8000, kill_count: 100, death_count: 10, bounty_count: 3, last_kill_timestamp: 0, last_seen_system: "", recent_kills_24h: 5, systems_visited: 3 },
-  { character_item_id: 456, name: "Kira Ashfall", threat_score: 5000, kill_count: 50, death_count: 20, bounty_count: 1, last_kill_timestamp: 0, last_seen_system: "", recent_kills_24h: 2, systems_visited: 5 },
-  { character_item_id: 789, name: "Dread Solaris", threat_score: 3000, kill_count: 30, death_count: 15, bounty_count: 0, last_kill_timestamp: 0, last_seen_system: "", recent_kills_24h: 1, systems_visited: 8 },
+  {
+    character_item_id: 123,
+    name: "Vex Nightburn",
+    threat_score: 8000,
+    kill_count: 100,
+    death_count: 10,
+    bounty_count: 3,
+    last_kill_timestamp: 0,
+    last_seen_system: "",
+    recent_kills_24h: 5,
+    systems_visited: 3,
+  },
+  {
+    character_item_id: 456,
+    name: "Kira Ashfall",
+    threat_score: 5000,
+    kill_count: 50,
+    death_count: 20,
+    bounty_count: 1,
+    last_kill_timestamp: 0,
+    last_seen_system: "",
+    recent_kills_24h: 2,
+    systems_visited: 5,
+  },
+  {
+    character_item_id: 789,
+    name: "Dread Solaris",
+    threat_score: 3000,
+    kill_count: 30,
+    death_count: 15,
+    bounty_count: 0,
+    last_kill_timestamp: 0,
+    last_seen_system: "",
+    recent_kills_24h: 1,
+    systems_visited: 8,
+  },
 ];
 
 describe("SentinelFeed", () => {

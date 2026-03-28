@@ -18,15 +18,24 @@ type CombinedData = {
   live: { threats: ThreatProfile[]; events: RawEvent[]; stats: AggregateStats };
 };
 
-const emptyStats: AggregateStats = { total_tracked: 0, avg_score: 0, kills_24h: 0, top_system: "", events_per_min: 0 };
+const emptyStats: AggregateStats = {
+  total_tracked: 0,
+  avg_score: 0,
+  kills_24h: 0,
+  top_system: "",
+  events_per_min: 0,
+};
 
 export function SentinelDashboard(props: { mode: "demo" | "live" }) {
   const [data, setData] = createSignal<CombinedData | null>(null);
-  const [selectedCharacter, setSelectedCharacter] = createSignal<number | null>(null);
+  const [selectedCharacter, setSelectedCharacter] = createSignal<number | null>(
+    null,
+  );
   const [subView, setSubView] = createSignal<SubView>("feed");
   const [loading, setLoading] = createSignal(true);
 
-  const current = () => data()?.[props.mode] ?? { threats: [], events: [], stats: emptyStats };
+  const current = () =>
+    data()?.[props.mode] ?? { threats: [], events: [], stats: emptyStats };
   const profiles = () => current().threats;
   const events = () => current().events;
   const stats = () => current().stats;
@@ -55,7 +64,6 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
     onCleanup(() => source.close());
   });
 
-
   function handleSelectCharacter(id: number) {
     setSelectedCharacter(id === selectedCharacter() ? null : id);
   }
@@ -78,7 +86,11 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
       </div>
 
       {/* Stats bar */}
-      <StatsBar stats={stats()} activeView={subView()} onStatClick={handleStatClick} />
+      <StatsBar
+        stats={stats()}
+        activeView={subView()}
+        onStatClick={handleStatClick}
+      />
 
       {/* Main content */}
       <div class="flex gap-6 mt-6 items-start">
@@ -86,16 +98,29 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
         <div class="flex-1 min-w-0">
           {/* Sub-views */}
           <Show when={subView() === "tracked"}>
-            <TrackedView profiles={profiles()} onSelect={handleSelectCharacter} loading={loading()} />
+            <TrackedView
+              profiles={profiles()}
+              onSelect={handleSelectCharacter}
+              loading={loading()}
+            />
           </Show>
           <Show when={subView() === "kills"}>
-            <KillsView profiles={profiles()} onSelect={handleSelectCharacter} selectedId={selectedCharacter()} loading={loading()} />
+            <KillsView
+              profiles={profiles()}
+              onSelect={handleSelectCharacter}
+              selectedId={selectedCharacter()}
+              loading={loading()}
+            />
           </Show>
           <Show when={subView() === "systems"}>
             <SystemsView profiles={profiles()} loading={loading()} />
           </Show>
           <Show when={subView() === "feed"}>
-            <FeedView events={events()} profiles={profiles()} loading={loading()} />
+            <FeedView
+              events={events()}
+              profiles={profiles()}
+              loading={loading()}
+            />
           </Show>
 
           {/* Default: leaderboard */}
@@ -120,7 +145,11 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
         <Show when={subView() !== "feed"}>
           <div
             class="w-80 shrink-0 hidden lg:block overflow-hidden cursor-pointer"
-            style={subView() !== "feed" && profiles().length > 0 ? "margin-top:2.5rem" : ""}
+            style={
+              subView() !== "feed" && profiles().length > 0
+                ? "margin-top:2.5rem"
+                : ""
+            }
             onClick={() => handleStatClick("feed")}
           >
             <SentinelFeed events={events()} profiles={profiles()} />

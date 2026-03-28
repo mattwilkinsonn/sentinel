@@ -19,7 +19,8 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
     // Collect IDs that need resolution
     let pending: Vec<u64> = {
         let s = state.read().await;
-        s.live.profiles
+        s.live
+            .profiles
             .keys()
             .filter(|id| !s.live.name_cache.contains_key(id))
             .copied()
@@ -52,13 +53,13 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
                 }
             }
             Err(e) => {
-                tracing::debug!(
-                    "Could not resolve name for character {character_item_id}: {e}"
-                );
+                tracing::debug!("Could not resolve name for character {character_item_id}: {e}");
                 // Cache a fallback so we don't retry every cycle
                 let mut s = state.write().await;
                 let fallback = format!("Pilot #{character_item_id}");
-                s.live.name_cache.insert(character_item_id, fallback.clone());
+                s.live
+                    .name_cache
+                    .insert(character_item_id, fallback.clone());
                 if let Some(profile) = s.live.profiles.get_mut(&character_item_id) {
                     profile.name = fallback;
                 }
@@ -66,7 +67,6 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
         }
     }
 }
-
 
 async fn connect_grpc(
     config: &AppConfig,

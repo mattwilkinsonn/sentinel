@@ -8,28 +8,30 @@ export const TENANT = process.env.TENANT || "dev";
 
 // Load test resource defaults from JSON (builders can customize this file)
 type TestResources = {
-    locationHash: string;
-    character: { gameCharacterId: number; gameCharacterBId: number };
-    networkNode: { typeId: number; itemId: number };
-    assembly: { typeId: number; itemId: number };
-    storageUnit: { typeId: number; itemId: number };
-    gate: { typeId: number; itemId1: number; itemId2: number };
-    item: { typeId: number; itemId: number };
+  locationHash: string;
+  character: { gameCharacterId: number; gameCharacterBId: number };
+  networkNode: { typeId: number; itemId: number };
+  assembly: { typeId: number; itemId: number };
+  storageUnit: { typeId: number; itemId: number };
+  gate: { typeId: number; itemId1: number; itemId2: number };
+  item: { typeId: number; itemId: number };
 };
 
 function loadTestResources(): TestResources {
-    const filePath = path.resolve(process.cwd(), "test-resources.json");
-    if (!fs.existsSync(filePath)) {
-        throw new Error(
-            `Missing ${filePath}. Copy test-resources.json from world-contracts after running create-test-resources.`
-        );
-    }
-    try {
-        const raw = fs.readFileSync(filePath, "utf8");
-        return JSON.parse(raw) as TestResources;
-    } catch (err) {
-        throw new Error(`Failed to parse ${filePath}: ${err instanceof Error ? err.message : err}`);
-    }
+  const filePath = path.resolve(process.cwd(), "test-resources.json");
+  if (!fs.existsSync(filePath)) {
+    throw new Error(
+      `Missing ${filePath}. Copy test-resources.json from world-contracts after running create-test-resources.`,
+    );
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(raw) as TestResources;
+  } catch (err) {
+    throw new Error(
+      `Failed to parse ${filePath}: ${err instanceof Error ? err.message : err}`,
+    );
+  }
 }
 
 const res = loadTestResources();

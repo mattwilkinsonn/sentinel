@@ -91,9 +91,21 @@ mod tests {
     #[test]
     fn kill_factor_is_logarithmic() {
         // Isolate kill factor: equal kills and deaths so kd=1 for all
-        let p1 = ThreatProfile { kill_count: 2, death_count: 2, ..Default::default() };
-        let p2 = ThreatProfile { kill_count: 8, death_count: 8, ..Default::default() };
-        let p3 = ThreatProfile { kill_count: 64, death_count: 64, ..Default::default() };
+        let p1 = ThreatProfile {
+            kill_count: 2,
+            death_count: 2,
+            ..Default::default()
+        };
+        let p2 = ThreatProfile {
+            kill_count: 8,
+            death_count: 8,
+            ..Default::default()
+        };
+        let p3 = ThreatProfile {
+            kill_count: 64,
+            death_count: 64,
+            ..Default::default()
+        };
         let s1 = compute_score(&p1);
         let s2 = compute_score(&p2);
         let s3 = compute_score(&p3);
@@ -102,7 +114,10 @@ mod tests {
         let gain_1_to_2 = s2 - s1;
         let gain_2_to_3 = s3 - s2;
         assert!(gain_1_to_2 > 0, "should have positive gain from 2->8 kills");
-        assert!(gain_2_to_3 < gain_1_to_2, "8->64 gain ({gain_2_to_3}) should be less than 2->8 gain ({gain_1_to_2})");
+        assert!(
+            gain_2_to_3 < gain_1_to_2,
+            "8->64 gain ({gain_2_to_3}) should be less than 2->8 gain ({gain_1_to_2})"
+        );
     }
 
     #[test]
@@ -162,9 +177,18 @@ mod tests {
 
     #[test]
     fn each_factor_contributes_independently() {
-        let kills_only = compute_score(&ThreatProfile { kill_count: 50, ..Default::default() });
-        let recency_only = compute_score(&ThreatProfile { recent_kills_24h: 2, ..Default::default() });
-        let bounty_only = compute_score(&ThreatProfile { bounty_count: 1, ..Default::default() });
+        let kills_only = compute_score(&ThreatProfile {
+            kill_count: 50,
+            ..Default::default()
+        });
+        let recency_only = compute_score(&ThreatProfile {
+            recent_kills_24h: 2,
+            ..Default::default()
+        });
+        let bounty_only = compute_score(&ThreatProfile {
+            bounty_count: 1,
+            ..Default::default()
+        });
 
         assert!(kills_only > 0);
         assert!(recency_only > 0);

@@ -4,6 +4,7 @@
 //!   docker compose up postgres -d
 //!   DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel cargo test
 
+use serial_test::serial;
 use sqlx::PgPool;
 
 mod common {
@@ -17,12 +18,10 @@ mod common {
             .await
             .expect("migrations failed");
 
-        sqlx::raw_sql(
-            "TRUNCATE threat_profiles, raw_events, checkpoint_cursor",
-        )
-        .execute(pool)
-        .await
-        .expect("truncate failed");
+        sqlx::raw_sql("TRUNCATE threat_profiles, raw_events, checkpoint_cursor")
+            .execute(pool)
+            .await
+            .expect("truncate failed");
     }
 }
 
@@ -40,6 +39,7 @@ async fn pool() -> PgPool {
 // ── Profile persistence ──
 
 #[tokio::test]
+#[serial]
 async fn upsert_and_load_profile() {
     let pool = pool().await;
     common::setup(&pool).await;
@@ -80,6 +80,7 @@ async fn upsert_and_load_profile() {
 }
 
 #[tokio::test]
+#[serial]
 async fn upsert_updates_existing_profile() {
     let pool = pool().await;
     common::setup(&pool).await;
@@ -118,6 +119,7 @@ async fn upsert_updates_existing_profile() {
 // ── Event persistence ──
 
 #[tokio::test]
+#[serial]
 async fn insert_and_load_events() {
     let pool = pool().await;
     common::setup(&pool).await;
@@ -159,14 +161,13 @@ async fn insert_and_load_events() {
 // ── Checkpoint persistence ──
 
 #[tokio::test]
+#[serial]
 async fn save_and_load_checkpoint() {
     let pool = pool().await;
     common::setup(&pool).await;
 
     // No checkpoint initially
-    let cp = sentinel_backend::db::load_checkpoint(&pool)
-        .await
-        .unwrap();
+    let cp = sentinel_backend::db::load_checkpoint(&pool).await.unwrap();
     assert_eq!(cp, None);
 
     // Save checkpoint
@@ -174,9 +175,7 @@ async fn save_and_load_checkpoint() {
         .await
         .unwrap();
 
-    let cp = sentinel_backend::db::load_checkpoint(&pool)
-        .await
-        .unwrap();
+    let cp = sentinel_backend::db::load_checkpoint(&pool).await.unwrap();
     assert_eq!(cp, Some(12345));
 
     // Update checkpoint
@@ -184,15 +183,14 @@ async fn save_and_load_checkpoint() {
         .await
         .unwrap();
 
-    let cp = sentinel_backend::db::load_checkpoint(&pool)
-        .await
-        .unwrap();
+    let cp = sentinel_backend::db::load_checkpoint(&pool).await.unwrap();
     assert_eq!(cp, Some(99999));
 }
 
 // ── Event pruning ──
 
 #[tokio::test]
+#[serial]
 async fn prune_events_keeps_most_recent() {
     let pool = pool().await;
     common::setup(&pool).await;
@@ -210,9 +208,7 @@ async fn prune_events_keeps_most_recent() {
         .unwrap();
     }
 
-    let pruned = sentinel_backend::db::prune_events(&pool, 3)
-        .await
-        .unwrap();
+    let pruned = sentinel_backend::db::prune_events(&pool, 3).await.unwrap();
     assert_eq!(pruned, 7);
 
     let mut store = sentinel_backend::types::DataStore::default();
@@ -230,6 +226,7 @@ async fn prune_events_keeps_most_recent() {
 // ── Multiple profiles ──
 
 #[tokio::test]
+#[serial]
 async fn load_multiple_profiles() {
     let pool = pool().await;
     common::setup(&pool).await;
