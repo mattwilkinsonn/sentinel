@@ -105,6 +105,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
                     for p in chunk {
                         if let Some(profile) = state.live.profiles.get_mut(&p.character_item_id) {
                             profile.published_score = profile.threat_score;
+                            profile.dirty = true; // flush to DB so published_score persists
                         }
                     }
                 }
