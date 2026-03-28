@@ -1,14 +1,14 @@
-import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import {
-  Crosshair,
   Clock,
-  User,
-  Users,
+  Crosshair,
+  RefreshCw,
   Target,
   Trophy,
-  RefreshCw,
+  User,
+  Users,
 } from "lucide-solid";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 
 const BOUNTY_BOARD_ID = import.meta.env.VITE_BOUNTY_BOARD_ID || "";
 const BUILDER_PACKAGE_ID = import.meta.env.VITE_BUILDER_PACKAGE_ID || "";
@@ -109,11 +109,17 @@ export function BountyBoard() {
           });
           const content = obj.data?.content;
           if (content?.dataType !== "moveObject") continue;
-          const fields = (content as any).fields?.value?.fields;
+          const fields = (
+            content as Record<string, Record<string, Record<string, unknown>>>
+          ).fields?.value?.fields as Record<string, unknown> | undefined;
           if (!fields) continue;
 
-          const contributors: Contribution[] = (fields.contributors || []).map(
-            (c: any) => ({
+          const contributors: Contribution[] = (
+            (fields.contributors as Array<{
+              fields?: { contributor?: string; amount?: number };
+            }>) || []
+          ).map(
+            (c: { fields?: { contributor?: string; amount?: number } }) => ({
               contributor: c.fields?.contributor || "",
               amount: Number(c.fields?.amount || 0),
             }),
@@ -181,7 +187,7 @@ export function BountyBoard() {
             order: "descending",
           });
           for (const ev of result.data) {
-            const parsed = ev.parsedJson as any;
+            const parsed = ev.parsedJson as Record<string, unknown>;
             all.push({
               type: kind,
               timestamp: Number(ev.timestampMs || 0),
@@ -258,6 +264,7 @@ export function BountyBoard() {
             <span class="text-text-muted text-sm">({active().length})</span>
           </h3>
           <button
+            type="button"
             onClick={() => {
               fetchBounties();
               fetchEvents();
@@ -468,6 +475,7 @@ function BountyCard(props: { bounty: Bounty }) {
           {/* Contributors */}
           <Show when={hasMultiple}>
             <button
+              type="button"
               onClick={() => setShowContrib(!showContrib())}
               class="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary bg-transparent border-none p-0 mt-2"
             >

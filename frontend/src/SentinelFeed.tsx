@@ -1,14 +1,14 @@
-import { For, createSignal, onCleanup, type Component } from "solid-js";
-import { Dynamic } from "solid-js/web";
 import {
-  Skull,
-  Target,
   Navigation,
   Shield,
-  Zap,
+  Skull,
+  Target,
   Trophy,
   UserPlus,
+  Zap,
 } from "lucide-solid";
+import { type Component, createSignal, For, onCleanup } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { RawEvent, ThreatProfile } from "./types";
 
 type SentinelFeedProps = {

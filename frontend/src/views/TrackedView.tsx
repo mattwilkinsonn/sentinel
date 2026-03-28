@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
-import type { ThreatProfile } from "../types";
 import { LoadingState } from "../LoadingState";
-import { getThreatTier, getThreatColor, getThreatColorClass } from "../types";
+import type { ThreatProfile } from "../types";
+import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
 
 type TrackedViewProps = {
   profiles: ThreatProfile[];
@@ -61,6 +61,7 @@ export function TrackedView(props: TrackedViewProps) {
 
               return (
                 <button
+                  type="button"
                   onClick={() => props.onSelect(profile.character_item_id)}
                   class="glass-card p-3 w-full text-left bg-transparent flex items-center gap-3"
                 >

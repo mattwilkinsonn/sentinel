@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@solidjs/testing-library";
+import { describe, expect, it, vi } from "vitest";
 import { ThreatCard } from "../ThreatCard";
 import type { ThreatProfile } from "../types";
 

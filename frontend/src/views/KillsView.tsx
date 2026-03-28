@@ -1,7 +1,7 @@
-import { For, Show, createSignal } from "solid-js";
-import { Skull, Shield, Target, MapPin, Clock } from "lucide-solid";
-import type { ThreatProfile } from "../types";
+import { Clock, MapPin, Shield, Skull, Target } from "lucide-solid";
+import { createSignal, For, Show } from "solid-js";
 import { LoadingState } from "../LoadingState";
+import type { ThreatProfile } from "../types";
 
 type KillsViewProps = {
   profiles: ThreatProfile[];
@@ -156,8 +156,9 @@ function ExpandableRow(props: {
   };
 
   return (
-    <div
-      class={`rounded border transition-all cursor-pointer ${
+    <button
+      type="button"
+      class={`rounded border transition-all cursor-pointer bg-transparent p-0 w-full text-left ${
         props.isExpanded
           ? "border-accent-cyan"
           : "border-border-default hover:border-border-hover"
@@ -226,7 +227,7 @@ function ExpandableRow(props: {
           )}
         </div>
       </Show>
-    </div>
+    </button>
   );
 }
 

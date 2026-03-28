@@ -1,7 +1,7 @@
-import { Shield, Skull, Activity, MapPin, Radio } from "lucide-solid";
-import type { AggregateStats } from "./types";
+import { Activity, MapPin, Radio, Shield, Skull } from "lucide-solid";
 import type { SubView } from "./SentinelDashboard";
 import { Tooltip } from "./Tooltip";
+import type { AggregateStats } from "./types";
 
 type StatsBarProps = {
   stats: AggregateStats;
@@ -61,6 +61,7 @@ export function StatsBar(props: StatsBarProps) {
       {statItems().map((item) => (
         <Tooltip text={item.tooltip}>
           <button
+            type="button"
             onClick={() => props.onStatClick(item.view)}
             class={`glass-card p-4 text-left bg-transparent transition-all w-full ${
               props.activeView === item.view

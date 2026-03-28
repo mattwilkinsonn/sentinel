@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@solidjs/testing-library";
+import { describe, expect, it, vi } from "vitest";
 import { ThreatLeaderboard } from "../ThreatLeaderboard";
 import type { ThreatProfile } from "../types";
 
@@ -92,9 +92,11 @@ describe("ThreatLeaderboard", () => {
       />
     ));
 
-    (screen
-      .getByText("Pilot #42")
-      .closest("[class*=glass-card]") as HTMLElement)!.click();
+    (
+      screen
+        .getByText("Pilot #42")
+        .closest("[class*=glass-card]") as HTMLElement
+    )?.click();
     expect(onSelect).toHaveBeenCalledWith(42);
   });
 

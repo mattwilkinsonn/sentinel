@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@solidjs/testing-library";
+import { describe, expect, it, vi } from "vitest";
 import { StatsBar } from "../StatsBar";
 
 describe("StatsBar", () => {
@@ -64,13 +64,13 @@ describe("StatsBar", () => {
       />
     ));
 
-    screen.getByText("TRACKED").closest("button")!.click();
+    screen.getByText("TRACKED").closest("button")?.click();
     expect(onClick).toHaveBeenCalledWith("tracked");
 
-    screen.getByText("KILLS 24H").closest("button")!.click();
+    screen.getByText("KILLS 24H").closest("button")?.click();
     expect(onClick).toHaveBeenCalledWith("kills");
 
-    screen.getByText("TOP SYSTEM").closest("button")!.click();
+    screen.getByText("TOP SYSTEM").closest("button")?.click();
     expect(onClick).toHaveBeenCalledWith("systems");
   });
 });

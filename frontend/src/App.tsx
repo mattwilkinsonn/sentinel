@@ -1,7 +1,7 @@
+import { Crosshair, Shield } from "lucide-solid";
 import { createSignal } from "solid-js";
-import { Shield, Crosshair } from "lucide-solid";
-import { SentinelDashboard } from "./SentinelDashboard";
 import { BountyBoard } from "./BountyBoard";
+import { SentinelDashboard } from "./SentinelDashboard";
 import { Tooltip } from "./Tooltip";
 
 type Tab = "sentinel" | "bounty";
@@ -21,6 +21,7 @@ export default function App() {
         <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div class="flex items-center gap-6">
             <button
+              type="button"
               onClick={() => setTab("sentinel")}
               class={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-all bg-transparent border-none ${
                 tab() === "sentinel"
@@ -32,6 +33,7 @@ export default function App() {
               SENTINEL
             </button>
             <button
+              type="button"
               onClick={() => setTab("bounty")}
               class={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-all bg-transparent border-none ${
                 tab() === "bounty"
@@ -52,6 +54,7 @@ export default function App() {
             }
           >
             <button
+              type="button"
               onClick={toggleMode}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-xs transition-all bg-transparent border border-border-default hover:border-border-hover"
             >

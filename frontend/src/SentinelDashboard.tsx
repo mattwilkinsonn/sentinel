@@ -1,13 +1,13 @@
-import { createSignal, createEffect, onCleanup, Show } from "solid-js";
-import type { ThreatProfile, RawEvent, AggregateStats } from "./types";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { LoadingState } from "./LoadingState";
+import { SentinelFeed } from "./SentinelFeed";
 import { StatsBar } from "./StatsBar";
 import { ThreatLeaderboard } from "./ThreatLeaderboard";
-import { SentinelFeed } from "./SentinelFeed";
-import { TrackedView } from "./views/TrackedView";
+import type { AggregateStats, RawEvent, ThreatProfile } from "./types";
+import { FeedView } from "./views/FeedView";
 import { KillsView } from "./views/KillsView";
 import { SystemsView } from "./views/SystemsView";
-import { FeedView } from "./views/FeedView";
-import { LoadingState } from "./LoadingState";
+import { TrackedView } from "./views/TrackedView";
 
 const API_BASE = "";
 
@@ -143,8 +143,9 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
 
         {/* Right: Activity feed sidebar (hidden when feed view is active) */}
         <Show when={subView() !== "feed"}>
-          <div
-            class="w-80 shrink-0 hidden lg:block overflow-hidden cursor-pointer"
+          <button
+            type="button"
+            class="w-80 shrink-0 hidden lg:block overflow-hidden cursor-pointer bg-transparent border-none p-0 text-left"
             style={
               subView() !== "feed" && profiles().length > 0
                 ? "margin-top:2.5rem"
@@ -153,7 +154,7 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
             onClick={() => handleStatClick("feed")}
           >
             <SentinelFeed events={events()} profiles={profiles()} />
-          </div>
+          </button>
         </Show>
       </div>
     </div>

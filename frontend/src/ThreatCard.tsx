@@ -1,6 +1,6 @@
-import { Skull, Shield, Target, MapPin, Clock, X } from "lucide-solid";
+import { Clock, MapPin, Shield, Skull, Target, X } from "lucide-solid";
 import type { ThreatProfile } from "./types";
-import { getThreatTier, getThreatColor, getThreatColorClass } from "./types";
+import { getThreatColor, getThreatColorClass, getThreatTier } from "./types";
 
 type ThreatCardProps = {
   profile: ThreatProfile;
@@ -52,6 +52,7 @@ export function ThreatCard(props: ThreatCardProps) {
           </div>
         </div>
         <button
+          type="button"
           onClick={props.onClose}
           class="text-text-muted hover:text-text-primary bg-transparent border-none p-1"
         >

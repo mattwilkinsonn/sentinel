@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { getThreatTier, getThreatColor, getThreatColorClass } from "../types";
+import { describe, expect, it } from "vitest";
+import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
 
 describe("getThreatTier", () => {
   it("returns LOW for 0", () => {

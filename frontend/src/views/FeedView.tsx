@@ -1,17 +1,17 @@
-import { For, Show, createSignal, onCleanup, type Component } from "solid-js";
-import { Dynamic } from "solid-js/web";
 import {
-  Skull,
-  Target,
   Navigation,
   Shield,
-  Zap,
+  Skull,
+  Target,
   Trophy,
   UserPlus,
+  Zap,
 } from "lucide-solid";
-import type { RawEvent, ThreatProfile } from "../types";
-import { Tooltip } from "../Tooltip";
+import { type Component, createSignal, For, onCleanup, Show } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import { LoadingState } from "../LoadingState";
+import { Tooltip } from "../Tooltip";
+import type { RawEvent, ThreatProfile } from "../types";
 
 type FeedViewProps = {
   events: RawEvent[];
@@ -215,7 +215,7 @@ export function FeedView(props: FeedViewProps) {
         INTEL FEED
         <span class="text-text-muted text-sm">
           {filter()
-            ? `${filteredEvents().length} ${filter()!.replace("_", " ")} events`
+            ? `${filteredEvents().length} ${filter()?.replace("_", " ")} events`
             : `${props.events.length} events`}
         </span>
       </h3>
@@ -233,6 +233,7 @@ export function FeedView(props: FeedViewProps) {
           return (
             <Tooltip text={item.tooltip}>
               <button
+                type="button"
                 onClick={() => setFilter(isActive() ? null : item.key)}
                 class={`glass-card p-2 flex flex-col items-center justify-center gap-1 bg-transparent transition-all w-full ${
                   isActive() ? "border-accent-cyan" : "border-border-default"
@@ -275,8 +276,9 @@ export function FeedView(props: FeedViewProps) {
             const isExpanded = () => expandedIdx() === i();
 
             return (
-              <div
-                class={`glass-card cursor-pointer transition-all ${isNew() ? "event-new" : ""} ${isExpanded() ? "border-accent-cyan" : ""}`}
+              <button
+                type="button"
+                class={`glass-card cursor-pointer transition-all bg-transparent border p-0 w-full text-left ${isNew() ? "event-new" : ""} ${isExpanded() ? "border-accent-cyan" : ""}`}
                 style={`border-left:3px solid ${config().borderColor}`}
                 onClick={() => setExpandedIdx(isExpanded() ? null : i())}
               >
@@ -330,7 +332,7 @@ export function FeedView(props: FeedViewProps) {
                     </div>
                   </div>
                 </Show>
-              </div>
+              </button>
             );
           }}
         </For>
@@ -340,7 +342,7 @@ export function FeedView(props: FeedViewProps) {
           loadingText="Connecting to event stream..."
           emptyText={
             filter()
-              ? `No ${filter()!.replace("_", " ")} events yet`
+              ? `No ${filter()?.replace("_", " ")} events yet`
               : "Waiting for events..."
           }
         />

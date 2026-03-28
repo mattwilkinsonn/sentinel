@@ -1,8 +1,8 @@
-import { For } from "solid-js";
 import { MapPin } from "lucide-solid";
-import type { ThreatProfile } from "../types";
+import { For } from "solid-js";
 import { LoadingState } from "../LoadingState";
-import { getThreatTier, getThreatColor, getThreatColorClass } from "../types";
+import type { ThreatProfile } from "../types";
+import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
 
 type SystemsViewProps = {
   profiles: ThreatProfile[];

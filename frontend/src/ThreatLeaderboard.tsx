@@ -1,11 +1,11 @@
+import { Clock, MapPin, Shield, Skull, Target } from "lucide-solid";
 import { For, Show } from "solid-js";
-import { Skull, Shield, Target, MapPin, Clock } from "lucide-solid";
 import type { ThreatProfile } from "./types";
 import {
-  getThreatTier,
+  computeBreakdown,
   getThreatColor,
   getThreatColorClass,
-  computeBreakdown,
+  getThreatTier,
 } from "./types";
 
 type ThreatLeaderboardProps = {
@@ -56,8 +56,9 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
             };
 
             return (
-              <div
-                class={`glass-card w-full text-left border transition-all cursor-pointer ${
+              <button
+                type="button"
+                class={`glass-card w-full text-left border transition-all cursor-pointer bg-transparent p-0 ${
                   isSelected()
                     ? "border-accent-cyan"
                     : "border-border-default hover:border-border-hover"
@@ -227,7 +228,7 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                     })()}
                   </div>
                 </Show>
-              </div>
+              </button>
             );
           }}
         </For>
