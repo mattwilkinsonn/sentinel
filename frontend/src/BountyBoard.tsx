@@ -109,17 +109,13 @@ export function BountyBoard() {
           });
           const content = obj.data?.content;
           if (content?.dataType !== "moveObject") continue;
-          const fields = (
-            content as Record<string, Record<string, Record<string, unknown>>>
-          ).fields?.value?.fields as Record<string, unknown> | undefined;
+          // biome-ignore lint/suspicious/noExplicitAny: Sui Move object fields have dynamic structure
+          const fields = (content as any).fields?.value?.fields;
           if (!fields) continue;
 
-          const contributors: Contribution[] = (
-            (fields.contributors as Array<{
-              fields?: { contributor?: string; amount?: number };
-            }>) || []
-          ).map(
-            (c: { fields?: { contributor?: string; amount?: number } }) => ({
+          // biome-ignore lint/suspicious/noExplicitAny: Sui contributor array has dynamic fields
+          const contributors: Contribution[] = (fields.contributors || []).map(
+            (c: any) => ({
               contributor: c.fields?.contributor || "",
               amount: Number(c.fields?.amount || 0),
             }),
@@ -127,14 +123,14 @@ export function BountyBoard() {
 
           loaded.push({
             id: Number(fields.id),
-            target_item_id: fields.target_item_id || "?",
-            target_tenant: fields.target_tenant || "?",
-            reward_type_id: fields.reward_type_id || "?",
+            target_item_id: String(fields.target_item_id || "?"),
+            target_tenant: String(fields.target_tenant || "?"),
+            reward_type_id: String(fields.reward_type_id || "?"),
             reward_quantity: Number(fields.reward_quantity || 0),
-            poster: fields.poster || "?",
-            expires_at: fields.expires_at || "0",
-            claimed: fields.claimed || false,
-            claimed_by: fields.claimed_by || null,
+            poster: String(fields.poster || "?"),
+            expires_at: String(fields.expires_at || "0"),
+            claimed: Boolean(fields.claimed),
+            claimed_by: fields.claimed_by ? String(fields.claimed_by) : null,
             contributors,
           });
         } catch {
@@ -187,13 +183,15 @@ export function BountyBoard() {
             order: "descending",
           });
           for (const ev of result.data) {
-            const parsed = ev.parsedJson as Record<string, unknown>;
+            // biome-ignore lint/suspicious/noExplicitAny: Sui event parsedJson is untyped
+            const parsed = ev.parsedJson as any;
             all.push({
               type: kind,
               timestamp: Number(ev.timestampMs || 0),
               bountyId: Number(parsed?.bounty_id || 0),
-              actor:
+              actor: String(
                 parsed?.poster || parsed?.hunter || parsed?.contributor || "",
+              ),
               rewardQuantity: Number(
                 parsed?.reward_quantity || parsed?.reward_quantity_added || 0,
               ),
