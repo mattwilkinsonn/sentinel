@@ -19,9 +19,8 @@ jobs:
       - name: Install Sui CLI
         run: |
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
-          export PATH="$HOME/.suiup/bin:$PATH"
-          suiup install
-          echo "$HOME/.suiup/bin" >> $GITHUB_PATH
+          suiup install sui
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Build sentinel contracts
         run: cd move-contracts/sentinel && sui move build

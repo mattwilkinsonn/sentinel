@@ -1,6 +1,6 @@
+import { bcs } from "@mysten/sui/bcs";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { type getConfig, MODULES } from "../utils/config";
-import { bcs } from "@mysten/sui/bcs";
 import { devInspectMoveCallFirstReturnValueBytes } from "../utils/dev-inspect";
 
 export async function getOwnerCap(

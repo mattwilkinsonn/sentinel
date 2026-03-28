@@ -1,9 +1,9 @@
-import { Transaction } from "@mysten/sui/transactions";
 import type {
-  SuiJsonRpcClient,
   ExecuteTransactionBlockParams,
+  SuiJsonRpcClient,
 } from "@mysten/sui/jsonRpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { Transaction } from "@mysten/sui/transactions";
 
 export async function executeSponsoredTransaction(
   tx: Transaction,

@@ -8,6 +8,18 @@
   "files": {
     "includes": ["frontend/src/**", "ts-scripts/**", "infrastructure/**"]
   },
+  "overrides": [
+    {
+      "includes": ["ts-scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ],
   "css": {
     "linter": {
       "enabled": false

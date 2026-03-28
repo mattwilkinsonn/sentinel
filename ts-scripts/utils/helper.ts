@@ -3,14 +3,14 @@ import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import {
   createClient,
-  keypairFromPrivateKey,
-  type HydratedWorldConfig,
-  type WorldConfig,
-  getConfig,
-  type Network,
   DEFAULT_RPC_URLS,
   type ExtractedObjectIds,
+  getConfig,
   getExtractedObjectIdsPath,
+  type HydratedWorldConfig,
+  keypairFromPrivateKey,
+  type Network,
+  type WorldConfig,
 } from "./config";
 import { TENANT } from "./constants";
 
@@ -34,7 +34,7 @@ export const DELAY_MS = Number(process.env.DELAY_SECONDS ?? 2) * 1000; // 2 seco
 
 export function fromHex(hex: string): Uint8Array {
   const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
-  const normalized = stripped.length % 2 === 0 ? stripped : "0" + stripped;
+  const normalized = stripped.length % 2 === 0 ? stripped : `0${stripped}`;
   if (!/^[0-9a-fA-F]*$/.test(normalized)) {
     throw new Error(`Invalid hex string: ${hex}`);
   }

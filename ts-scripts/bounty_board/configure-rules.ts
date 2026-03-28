@@ -1,5 +1,7 @@
 import { config } from "dotenv";
+
 config({ path: "../.env" });
+
 import { Transaction } from "@mysten/sui/transactions";
 import { getEnvConfig, handleError, initializeContext } from "../utils/helper";
 import { resolveBountyBoardExtensionIds } from "./extension-ids";

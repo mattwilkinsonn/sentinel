@@ -1,8 +1,10 @@
 import { config } from "dotenv";
+
 config({ path: "../.env" });
+
 import { Transaction } from "@mysten/sui/transactions";
+import { getOwnerCap as getStorageUnitOwnerCap } from "../helpers/storage-unit-extension";
 import { MODULES } from "../utils/config";
-import { deriveObjectId } from "../utils/derive-object-id";
 import {
   getEnvConfig,
   handleError,
@@ -10,7 +12,6 @@ import {
   requireEnv,
 } from "../utils/helper";
 import { requireBuilderPackageId } from "./extension-ids";
-import { getOwnerCap as getStorageUnitOwnerCap } from "../helpers/storage-unit-extension";
 import { MODULE } from "./modules";
 
 /**

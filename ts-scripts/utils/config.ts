@@ -1,7 +1,7 @@
 import path from "node:path";
+import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 
 // --- Deployment file paths ---
 export const EXTRACTED_OBJECT_IDS_FILENAME = "extracted-object-ids.json";
