@@ -103,7 +103,7 @@ jobs:
         with:
           context: sentinel-backend
           provenance: false
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -141,11 +141,11 @@ jobs:
       - name: Prettier (Move)
         run: cd ts-scripts && bun run fmt:move:check
 
-  deploy:
-    name: Deploy
+  deploy-production:
+    name: Deploy (production)
     needs: [contracts, backend, frontend, lint]
     concurrency:
-      group: deploy-${{ github.ref }}
+      group: deploy-production
       cancel-in-progress: false
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
@@ -169,22 +169,55 @@ jobs:
         uses: actions/cache@v4
         with:
           path: infrastructure/.sst
-          key: sst-${{ hashFiles('infrastructure/sst.config.ts') }}
-          restore-keys: sst-
+          key: sst-production-${{ hashFiles('infrastructure/sst.config.ts') }}
+          restore-keys: sst-production-
 
-      - name: Determine stage
-        id: stage
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "stage=production" >> "$GITHUB_OUTPUT"
-          else
-            echo "stage=dev" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Deploy (${{ steps.stage.outputs.stage }})
+      - name: Deploy (production)
         run: |
           export PATH=$HOME/.sst/bin:$PATH
-          cd infrastructure && sst install && sst deploy --stage ${{ steps.stage.outputs.stage }}
+          cd infrastructure && sst install && sst deploy --stage production
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          ADMIN_PRIVATE_KEY: ${{ secrets.ADMIN_PRIVATE_KEY }}
+
+  deploy-dev:
+    name: Deploy (dev)
+    needs: [contracts, backend, frontend, lint]
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: true
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Install SST
+        run: curl -fsSL https://sst.dev/install | bash
+
+      - name: Cache SST providers
+        uses: actions/cache@v4
+        with:
+          path: infrastructure/.sst
+          key: sst-dev-${{ hashFiles('infrastructure/sst.config.ts') }}
+          restore-keys: sst-dev-
+
+      - name: Deploy (dev)
+        run: |
+          export PATH=$HOME/.sst/bin:$PATH
+          cd infrastructure && sst install && sst deploy --stage dev
         env:
           IMAGE_TAG: ${{ github.sha }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
