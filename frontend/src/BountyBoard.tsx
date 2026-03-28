@@ -113,8 +113,8 @@ export function BountyBoard() {
           const fields = (content as any).fields?.value?.fields;
           if (!fields) continue;
 
-          // biome-ignore lint/suspicious/noExplicitAny: Sui contributor array has dynamic fields
           const contributors: Contribution[] = (fields.contributors || []).map(
+            // biome-ignore lint/suspicious/noExplicitAny: Sui contributor array has dynamic fields
             (c: any) => ({
               contributor: c.fields?.contributor || "",
               amount: Number(c.fields?.amount || 0),
