@@ -18,9 +18,12 @@ jobs:
 
       - name: Install Sui CLI
         run: |
-          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
-          suiup install sui --yes
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          SUI_VERSION=$(curl -sS "https://api.github.com/repos/MystenLabs/sui/releases/latest" | jq -r '.tag_name')
+          curl -sSfL "https://github.com/MystenLabs/sui/releases/download/${SUI_VERSION}/sui-${SUI_VERSION}-ubuntu-x86_64.tgz" -o sui.tgz
+          tar -xzf sui.tgz
+          sudo mv sui /usr/local/bin/
+          rm sui.tgz
+          sui --version
 
       - name: Build sentinel contracts
         run: cd move-contracts/sentinel && sui move build
