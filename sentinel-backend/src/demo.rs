@@ -64,7 +64,7 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
 
     // Seed 10 recent events spread across the last 5 minutes
     let mut rng = StdRng::from_os_rng();
-    for i in 0..10 {
+    for _ in 0..10 {
         let age_ms = rng.random_range(10_000..300_000u64);
         let ts = now - age_ms;
         let char_count = DEMO_CHARACTERS.len();

@@ -31,6 +31,7 @@ pub fn compute_score(profile: &ThreatProfile) -> u64 {
 }
 
 /// Return the threat tier label for a score.
+#[allow(dead_code)]
 pub fn threat_tier(score: u64) -> &'static str {
     match score {
         0..=2500 => "LOW",

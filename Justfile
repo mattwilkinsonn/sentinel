@@ -92,9 +92,15 @@ script name:
 fmt-move:
     cd ts-scripts && bun run fmt:move
 
-# Format TypeScript
+# Format TypeScript (scripts + frontend)
 fmt-ts:
     cd ts-scripts && bun run fmt:ts
+    cd frontend && bun run fmt
+
+# Check formatting
+fmt-check:
+    cd ts-scripts && bun run fmt:check
+    cd frontend && bun run fmt:check
 
 # === Full Stack ===
 

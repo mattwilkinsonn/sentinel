@@ -48,9 +48,7 @@ jobs:
       DATABASE_URL: postgresql://sentinel:sentinel@localhost/sentinel
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
-
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sentinel-backend
@@ -73,6 +71,9 @@ jobs:
       - name: Build release
         run: cd sentinel-backend && cargo build --release
 
+      - name: Build Docker image
+        run: cd sentinel-backend && docker build -t sentinel-backend:ci .
+
   frontend:
     name: Solid.js Frontend
     runs-on: ubuntu-latest
@@ -89,9 +90,28 @@ jobs:
       - name: Test
         run: cd frontend && bun run test
 
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend deps
+        run: cd frontend && bun install
+
+      - name: Install scripts deps
+        run: cd ts-scripts && bun install
+
+      - name: Check formatting (frontend)
+        run: cd frontend && bunx prettier --check "src/**/*.{ts,tsx}"
+
+      - name: Check formatting (scripts)
+        run: cd ts-scripts && bun run fmt:check
+
   deploy:
     name: Deploy
-    needs: [contracts, backend, frontend]
+    needs: [contracts, backend, frontend, lint]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -109,6 +129,13 @@ jobs:
 
       - name: Install SST
         run: curl -fsSL https://sst.dev/install | bash
+
+      - name: Cache SST providers
+        uses: actions/cache@v4
+        with:
+          path: infrastructure/.sst
+          key: sst-${{ hashFiles('infrastructure/sst.config.ts') }}
+          restore-keys: sst-
 
       - name: Deploy
         run: |

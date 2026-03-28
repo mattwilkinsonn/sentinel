@@ -56,8 +56,10 @@ async fn run_stream(
 
     tracing::info!("gRPC checkpoint stream connected");
 
+    let mut checkpoint_count: u64 = 0;
     while let Some(response) = stream.message().await? {
         let cursor = response.cursor.unwrap_or(0);
+        checkpoint_count += 1;
 
         if let Some(checkpoint) = response.checkpoint {
             process_checkpoint(config, state, &checkpoint, cursor).await;
@@ -65,6 +67,11 @@ async fn run_stream(
 
         // Update cursor
         state.write().await.last_checkpoint = Some(cursor);
+
+        // Heartbeat every 100 checkpoints
+        if checkpoint_count % 100 == 0 {
+            tracing::info!("gRPC stream alive — processed {checkpoint_count} checkpoints, cursor={cursor}");
+        }
     }
 
     Ok(())
@@ -126,8 +133,7 @@ async fn process_checkpoint(
                 handle_jump(store, &sse_tx, &json_value, timestamp_ms);
             }
 
-            // Log
-            tracing::debug!(
+            tracing::info!(
                 "checkpoint={cursor} event={event_type} pkg={package_id}"
             );
         }

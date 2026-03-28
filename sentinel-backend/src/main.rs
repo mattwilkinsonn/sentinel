@@ -167,7 +167,7 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>) {
         }
 
         if !dirty_profiles.is_empty() || !new_events.is_empty() {
-            tracing::debug!(
+            tracing::info!(
                 "DB sync: {} profiles, {} events flushed",
                 dirty_profiles.len(),
                 new_events.len()

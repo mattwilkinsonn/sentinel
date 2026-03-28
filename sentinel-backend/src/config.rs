@@ -4,14 +4,10 @@ use std::env;
 pub struct AppConfig {
     /// gRPC endpoint for Sui fullnode (e.g., "https://fullnode.testnet.sui.io:443")
     pub sui_grpc_url: String,
-    /// JSON-RPC endpoint for transaction submission
-    pub sui_rpc_url: String,
     /// Sentinel package ID on chain
     pub sentinel_package_id: String,
     /// ThreatRegistry shared object ID
     pub threat_registry_id: String,
-    /// AdminCap object ID (for batch_update)
-    pub admin_cap_id: String,
     /// Admin private key (ed25519, hex or base64)
     pub admin_private_key: String,
     /// World package ID (for event type filtering)
@@ -31,11 +27,8 @@ impl AppConfig {
         Ok(Self {
             sui_grpc_url: env::var("SUI_GRPC_URL")
                 .unwrap_or_else(|_| "https://fullnode.testnet.sui.io:443".into()),
-            sui_rpc_url: env::var("SUI_RPC_URL")
-                .unwrap_or_else(|_| "https://fullnode.testnet.sui.io:443".into()),
             sentinel_package_id: env::var("SENTINEL_PACKAGE_ID").unwrap_or_default(),
             threat_registry_id: env::var("THREAT_REGISTRY_ID").unwrap_or_default(),
-            admin_cap_id: env::var("SENTINEL_ADMIN_CAP_ID").unwrap_or_default(),
             admin_private_key: env::var("ADMIN_PRIVATE_KEY").unwrap_or_default(),
             world_package_id: env::var("WORLD_PACKAGE_ID").unwrap_or_default(),
             bounty_board_package_id: env::var("BUILDER_PACKAGE_ID").unwrap_or_default(),

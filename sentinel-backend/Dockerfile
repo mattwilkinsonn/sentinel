@@ -14,12 +14,13 @@ COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 
 # Create dummy src to build dependencies
-RUN mkdir src && echo 'fn main() {}' > src/main.rs
+RUN mkdir -p src migrations && echo 'fn main() {}' > src/main.rs && touch src/lib.rs && touch migrations/001_init.sql
 RUN cargo build --release 2>/dev/null || true
-RUN rm -rf src
+RUN rm -rf src migrations
 
-# Copy actual source
+# Copy actual source and migrations
 COPY src ./src
+COPY migrations ./migrations
 
 # Build for real
 RUN cargo build --release
@@ -27,7 +28,7 @@ RUN cargo build --release
 # Runtime stage
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/sentinel-backend /usr/local/bin/sentinel-backend
 

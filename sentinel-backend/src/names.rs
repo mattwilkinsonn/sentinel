@@ -12,7 +12,6 @@ use crate::grpc::sui_rpc;
 use crate::types::AppState;
 
 use sui_rpc::ledger_service_client::LedgerServiceClient;
-use sui_rpc::GetObjectRequest;
 
 /// Resolve names for any character_item_ids that aren't cached yet.
 /// Called periodically or after new characters are discovered.
@@ -68,25 +67,6 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
     }
 }
 
-/// Apply cached names to any profiles that have an empty name.
-pub async fn apply_cached_names(state: &Arc<RwLock<AppState>>) {
-    let mut s = state.write().await;
-    // Collect updates first to avoid borrow conflict
-    let updates: Vec<(u64, String)> = s.live.profiles.values()
-        .filter(|p| p.name.is_empty() || p.name.starts_with("Pilot #"))
-        .filter_map(|p| {
-            s.live.name_cache.get(&p.character_item_id)
-                .filter(|n| !n.starts_with("Pilot #"))
-                .map(|n| (p.character_item_id, n.clone()))
-        })
-        .collect();
-
-    for (id, name) in updates {
-        if let Some(profile) = s.live.profiles.get_mut(&id) {
-            profile.name = name;
-        }
-    }
-}
 
 async fn connect_grpc(
     config: &AppConfig,

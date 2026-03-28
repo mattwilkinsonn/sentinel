@@ -7,9 +7,7 @@ export default $config({
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
-        aws: {
-          region: "us-east-1",
-        },
+        aws: "6.75.0",
         neon: "0.13.0",
       },
     };
@@ -43,12 +41,28 @@ export default $config({
       ownerName: dbRole.name,
     });
 
+    const databaseUrl = $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${dbEndpoint.host}/${dbName.name}?sslmode=require`;
+
+    // VPC + ECS Cluster
+    const vpc = new sst.aws.Vpc("SentinelVpc");
+    const cluster = new sst.aws.Cluster("SentinelCluster", { vpc });
+
     // Backend service (ECS Fargate)
-    const backend = new sst.aws.Service("SentinelBackend", {
-      path: "../sentinel-backend",
-      port: 3001,
-      cpu: "0.25 vCPU",
-      memory: "0.5 GB",
+    const backend = cluster.addService("SentinelBackend", {
+      image: {
+        dockerfile: "../sentinel-backend/Dockerfile",
+        context: "../sentinel-backend",
+      },
+      health: {
+        command: [
+          "CMD-SHELL",
+          "curl -f http://localhost:3001/api/health || exit 1",
+        ],
+        interval: "30 seconds",
+      },
+      loadBalancer: {
+        rules: [{ listen: "80/http", forward: "3001/http" }],
+      },
       environment: {
         SENTINEL_API_PORT: "3001",
         SENTINEL_PACKAGE_ID: process.env.SENTINEL_PACKAGE_ID || "",
@@ -58,12 +72,7 @@ export default $config({
         WORLD_PACKAGE_ID: process.env.WORLD_PACKAGE_ID || "",
         BUILDER_PACKAGE_ID: process.env.BUILDER_PACKAGE_ID || "",
         SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443",
-        SUI_RPC_URL: "https://fullnode.testnet.sui.io:443",
-        DATABASE_URL: $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${dbEndpoint.host}/${dbName.name}?sslmode=require`,
-      },
-      health: {
-        path: "/api/health",
-        interval: "30 seconds",
+        DATABASE_URL: databaseUrl,
       },
     });
 

@@ -22,12 +22,12 @@ async function main() {
         // (that's what we're creating here)
         const builderPackageId = requireBuilderPackageId();
         const adminCapType = `${builderPackageId}::${MODULE.CONFIG}::AdminCap`;
-        const result = await client.getOwnedObjects({
+        const ownedObjects = await client.getOwnedObjects({
             owner: address,
             filter: { StructType: adminCapType },
             limit: 1,
         });
-        const adminCapId = result.data[0]?.data?.objectId;
+        const adminCapId = ownedObjects.data[0]?.data?.objectId;
         if (!adminCapId) {
             throw new Error(
                 `AdminCap not found for ${address}. Make sure this address published the bounty_board package.`
