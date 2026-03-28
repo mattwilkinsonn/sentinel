@@ -17,7 +17,7 @@ describe("StatsBar", () => {
     ));
 
     expect(screen.getByText("TRACKED")).toBeTruthy();
-    expect(screen.getByText("AVG SCORE")).toBeTruthy();
+    expect(screen.getByText("AVG THREAT")).toBeTruthy();
     expect(screen.getByText("EVENTS/MIN")).toBeTruthy();
     expect(screen.getByText("KILLS 24H")).toBeTruthy();
     expect(screen.getByText("TOP SYSTEM")).toBeTruthy();
