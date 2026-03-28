@@ -60,6 +60,16 @@ pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>, pool: sql
             .copied()
             .unwrap_or(0);
         p.threat_score = crate::threat_engine::compute_score(p);
+        // If this profile was already published on-chain, align
+        // published_score with the recomputed value so the publisher
+        // doesn't re-publish every profile on restart.  Historical
+        // recomputation can shift scores (event deque overflow, 24h
+        // window drift, systems_visited double-count) without any
+        // genuinely new data arriving.
+        if p.published_score > 0 {
+            p.published_score = p.threat_score;
+            p.dirty = true;
+        }
     }
 
     // Mark remaining unresolved names so we stop retrying
@@ -612,9 +622,11 @@ pub async fn load_jump_events(
     let event_type = format!("{}::gate::JumpEvent", config.world_package_id);
     tracing::info!("Loading jump events");
 
-    let has_existing = {
+    let (has_existing, existing_profiles) = {
         let s = state.read().await;
-        s.live.recent_events.iter().any(|e| e.event_type == "jump")
+        let has = s.live.recent_events.iter().any(|e| e.event_type == "jump");
+        let profiles: std::collections::HashSet<u64> = s.live.profiles.keys().copied().collect();
+        (has, profiles)
     };
     if has_existing {
         tracing::info!("Skipping jump events — already have them from DB");
@@ -702,12 +714,15 @@ pub async fn load_jump_events(
         let mut s = state.write().await;
         for (char_id, timestamp, source_name, dest_name) in &jump_data {
             if let Some(id) = char_id {
+                let is_new = !existing_profiles.contains(id);
                 let profile = s.live.profiles.entry(*id).or_insert_with(|| ThreatProfile {
                     character_item_id: *id,
                     name: format!("Pilot #{id}"),
                     ..Default::default()
                 });
-                profile.systems_visited += 1;
+                if is_new {
+                    profile.systems_visited += 1;
+                }
                 profile.threat_score = crate::threat_engine::compute_score(profile);
 
                 s.live.push_event(
