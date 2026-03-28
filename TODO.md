@@ -6,15 +6,16 @@ Deadline: March 31, 2026 23:59 UTC
 
 - [x] ~~Fix SST deploy~~ — NEON_ORG_ID, historyRetention,
       Cloudflare DNS, ARM containers on GHCR
-- [x] ~~Complete on-chain publisher~~ — built, but RPC returns
-      "Invalid value" — needs BCS serialization debugging
+- [x] ~~Complete on-chain publisher~~ — sig format fixed, shared
+      object version fixed, InsufficientGas fixed (0.5 SUI budget)
 - [x] ~~Verify live events flowing~~ — gRPC stream connected,
-      Stillness world package ID confirmed, diagnostic logging added
-- [ ] **Debug publisher RPC error** — `sui_executeTransactionBlock`
-      rejects our BCS payload. May need to use `SimulateTransaction`
-      first, or switch to the GraphQL `executeTransactionBlock` API.
-- [ ] **Deploy to production** — SST deploy blocked by Cloudflare
-      StaticSite bug, switched to AWS StaticSite. Needs clean deploy.
+      Stillness world package ID confirmed
+- [ ] **Verify publisher succeeds** — dry run passed with
+      InsufficientGas, now increased budget + smaller batches.
+      Need to confirm `Published X threat scores — tx: <digest>`.
+- [ ] **Deploy to production** — using `sst.aws.StaticSite` with
+      `sst.cloudflare.dns()`. ALB health check configured for
+      `/api/health`. Public chain IDs in `CHAIN_IDS` config.
 - [ ] **Submit on Deepsurge** — register, submit repo link + materials
 
 ## High priority
@@ -27,6 +28,17 @@ Deadline: March 31, 2026 23:59 UTC
 - [x] ~~New Pilots view~~ — separate page with 24h count
 - [x] ~~Feed improvements~~ — separate gameplay/new_pilot events,
       gate names resolved, Smart Gate jump labels
+- [x] ~~Character name DB caching~~ — 4800+ names cached in Postgres,
+      loaded instantly on restart
+- [x] ~~Live name resolution~~ — metadata resolver fetches names
+      for new characters via GraphQL every 10s
+- [ ] **Migrate publisher to gRPC** — switch from JSON-RPC to gRPC
+      `TransactionExecutionService.ExecuteTransaction` for on-chain
+      publishing. Narrative: started with JSON-RPC for MVP, migrated
+      to gRPC for performance. Helps "Best Technical" category.
+- [ ] **Add Claude development section to README** — document AI-assisted
+      development process with example prompts showing human direction
+      of architecture, design decisions, and technical corrections.
 - [ ] **Discord bot** — TS bot (discord.js) that polls /api/data.
       Commands: `/threat <pilot>`, `/leaderboard`, `/alerts`.
       ~2 hours. Judges love seeing integrations.
@@ -52,49 +64,31 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Nice to have
 
-- [ ] **Auto-update WORLD_PACKAGE_ID** — query `evefrontier/world-contracts`
-      GitHub releases or chain state at deploy time to get the latest
-      Stillness world package ID. Currently hardcoded in `sst.config.ts`.
-- [ ] **Frontend error logging (Sentry)** — catch unresolved character
-      names, failed API calls, and other edge cases. Would surface issues
-      where the GraphQL resolver consistently fails for certain characters.
-- [ ] **Investigate SST Cloudflare StaticSite bug** — `Could not resolve "sst"`
-      in worker.ts:480 during `Runtime.Build`. Affects all Cloudflare Worker-based
-      components on SST 4.5.12. Static env vars don't help — bug is in the
-      component itself. File issue on github.com/sst/sst if not already reported.
-      Currently using `sst.aws.StaticSite` with `sst.cloudflare.dns()` as workaround.
-- [ ] **AI narrative feed** — use Claude API to generate story-style
-      descriptions of events. Template fallback if API unavailable.
-- [ ] **Earned titles expansion** — add pattern-based titles:
+- [ ] **Publisher gas monitoring** — check SUI balance before
+      publishing, warn when below threshold. Auto-request from
+      faucet or alert to manually top up.
+- [ ] **Auto-update WORLD_PACKAGE_ID** — query chain state or
+      `evefrontier/world-contracts` releases at deploy time.
+      Currently hardcoded in `CHAIN_IDS` in `sst.config.ts`.
+- [ ] **Frontend error logging (Sentry)** — catch unresolved
+      character names, failed API calls, edge cases.
+- [ ] **Investigate SST Cloudflare StaticSite bug** — `Could not
+      resolve "sst"` in worker.ts:480. Affects all CF Worker
+      components on SST 4.5.12. File issue on sst/sst.
+      Using `sst.aws.StaticSite` + `sst.cloudflare.dns()` workaround.
+- [ ] **AI narrative feed** — Claude API story-style event
+      descriptions. Template fallback if unavailable.
+- [ ] **Earned titles expansion** — pattern-based titles:
       "Gate Camper", "Fleet Commander", "Night Stalker".
-- [ ] **Alt detection** — behavioral fingerprint comparison to flag
-      likely alternate accounts.
-- [ ] **Webhook/alert system** — Discord webhooks for kills, bounties,
-      gate blocks. Push notifications for high-threat events.
-- [ ] **Migrate to SolidStart** — SSR, file-based routing, API routes.
-      Post-hackathon improvement for SEO and initial load performance.
+- [ ] **Alt detection** — behavioral fingerprint comparison.
+- [ ] **Webhook/alert system** — Discord webhooks for kills,
+      bounties, gate blocks.
+- [ ] **Migrate to SolidStart** — SSR, file-based routing.
+- [ ] **Distinguish turret kills from PvP** — if `killer_id` is not
+      in Character objects, it's a turret/structure. Use `reported_by`
+      field to attribute kills to structure owners.
 - [ ] **StatusChangedEvent / GateCreatedEvent** — track assembly
-      online/offline and new gate deployments from chain events.
-
-## Done (completed this session)
-
-- [x] Postgres persistence with SQLx + migrations
-- [x] Docker Compose for local dev
-- [x] World REST API integration (system names, tribes)
-- [x] Historical killmail loading from Sui GraphQL
-- [x] Character name resolution from GraphQL
-- [x] Jump event loading with gate name resolution
-- [x] New Pilots separate view and API key
-- [x] Earned titles (14 types) with badges on leaderboard
-- [x] On-chain publisher (built, needs RPC debug)
-- [x] Pre-commit hooks (biome, cargo fmt, yamllint, markdownlint)
-- [x] CI/CD with GitHub Actions (ARM builds, GHCR, SST deploy)
-- [x] Cloudflare DNS + AWS CloudFront for frontend
-- [x] Demo data with 25 pilots, realistic score distribution
-- [x] Event dedup (killmail objects, DB sync, separate deques)
-- [x] Background historical loading (API responsive immediately)
-- [x] All 50 backend tests + 43 frontend tests passing
-- [x] Zero warnings in Rust, zero biome errors in TypeScript
+      online/offline and new gate deployments.
 
 ## Architecture notes
 
@@ -109,3 +103,5 @@ Deadline: March 31, 2026 23:59 UTC
 - Kill timestamps are in seconds (not ms) — convert on ingest
 - Smart Gate jumps only — regular jumps are server-side only
 - Gate objects have `metadata.name` but no solar system ID
+- Publisher wallet: ~0.89 SUI testnet balance
+- Shared objects need `initial_shared_version`, not current version

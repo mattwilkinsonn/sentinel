@@ -10,7 +10,7 @@ import { PilotsView } from "./views/PilotsView";
 import { SystemsView } from "./views/SystemsView";
 import { TrackedView } from "./views/TrackedView";
 
-const API_BASE = "";
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 export type SubView =
   | "leaderboard"
@@ -73,8 +73,13 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
   const events = () => {
     const n = data()?.names ?? {};
     return current().events.filter((e) => {
+      // Structure kills only need the killer resolved, not the victim
+      const keysToCheck =
+        e.event_type === "structure_kill"
+          ? ["killer_character_id"]
+          : charIdKeys;
       const d = e.data as Record<string, unknown>;
-      return charIdKeys.every((key) => {
+      return keysToCheck.every((key) => {
         const v = d[key];
         return v == null || !!n[String(v)];
       });

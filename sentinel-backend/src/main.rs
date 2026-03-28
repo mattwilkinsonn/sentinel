@@ -24,12 +24,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::from_path("../.env").ok();
     dotenvy::dotenv().ok();
 
-    tracing_subscriber::fmt()
+    let pretty_logs =
+        atty::is(atty::Stream::Stdout) || std::env::var("LOG_FORMAT").as_deref() == Ok("pretty");
+    let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("sentinel_backend=info,tower_http=info")),
         )
-        .init();
+        .with_ansi(pretty_logs);
+    if pretty_logs {
+        subscriber.init();
+    } else {
+        subscriber.json().init();
+    }
 
     let config = AppConfig::from_env()?;
     tracing::info!("SENTINEL starting — streaming from {}", config.sui_grpc_url);

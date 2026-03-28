@@ -173,6 +173,10 @@ fn handle_killmail(
     let victim_id = json_item_id(json, "victim_id")
         .or_else(|| json_item_id(json, "victim_character_id"))
         .or_else(|| json_u64(json, "victimId"));
+    let is_structure_kill = json["loss_type"]["@variant"]
+        .as_str()
+        .map(|v| v == "STRUCTURE")
+        .unwrap_or(false);
     let system = json_item_id_str(json, "solar_system_id")
         .or_else(|| json_str(json, "solarSystemId"))
         .unwrap_or_default();
@@ -198,25 +202,33 @@ fn handle_killmail(
     }
 
     if let Some(victim) = victim_id {
-        let name = resolve_name(state, victim);
-        let profile = state
-            .profiles
-            .entry(victim)
-            .or_insert_with(|| ThreatProfile {
-                character_item_id: victim,
-                name,
-                ..Default::default()
-            });
-        profile.death_count += 1;
-        profile.last_seen_system = system.clone();
-        profile.last_seen_system_name = system_name.clone();
-        profile.dirty = true;
-        profile.threat_score = threat_engine::compute_score(profile);
+        if !is_structure_kill {
+            let name = resolve_name(state, victim);
+            let profile = state
+                .profiles
+                .entry(victim)
+                .or_insert_with(|| ThreatProfile {
+                    character_item_id: victim,
+                    name,
+                    ..Default::default()
+                });
+            profile.death_count += 1;
+            profile.last_seen_system = system.clone();
+            profile.last_seen_system_name = system_name.clone();
+            profile.dirty = true;
+            profile.threat_score = threat_engine::compute_score(profile);
+        }
     }
+
+    let event_type = if is_structure_kill {
+        "structure_kill"
+    } else {
+        "kill"
+    };
 
     state.push_event(
         RawEvent {
-            event_type: "kill".into(),
+            event_type: event_type.into(),
             timestamp_ms,
             data: serde_json::json!({
                 "killer_character_id": killer_id,

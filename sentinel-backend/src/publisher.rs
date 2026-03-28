@@ -87,7 +87,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         );
 
         let mut batch_ok = true;
-        for chunk in publishable.chunks(50) {
+        for chunk in publishable.chunks(20) {
             match publish_batch(
                 &config,
                 &http,
@@ -326,7 +326,7 @@ async fn publish_batch(
     );
 
     tx.set_sender(sender);
-    tx.set_gas_budget(100_000_000);
+    tx.set_gas_budget(500_000_000); // 0.5 SUI — large batch needs more gas
     tx.set_gas_price(1000);
     tx.add_gas_objects([ObjectInput::owned(gas_id, gas_version, gas_digest)]);
 

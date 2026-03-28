@@ -30,6 +30,12 @@ const eventConfig: Record<string, EventDisplay> = {
     format: (d, l) =>
       `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
   },
+  structure_kill: {
+    icon: Zap,
+    color: "text-accent-orange",
+    borderColor: "var(--color-accent-orange)",
+    format: (d, l) => `${l.n(d.killer_character_id)} destroyed a structure`,
+  },
   bounty_posted: {
     icon: Target,
     color: "text-accent-cyan",
@@ -81,8 +87,8 @@ const eventConfig: Record<string, EventDisplay> = {
   },
   gate_blocked: {
     icon: Zap,
-    color: "text-accent-orange",
-    borderColor: "var(--color-accent-orange)",
+    color: "text-text-primary",
+    borderColor: "var(--color-text-primary)",
     format: (d, l) => `${l.n(d.character_id)} blocked at gate`,
   },
 };

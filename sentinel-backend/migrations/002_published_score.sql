@@ -1,0 +1,1 @@
+ALTER TABLE threat_profiles ADD COLUMN IF NOT EXISTS published_score BIGINT NOT NULL DEFAULT 0;

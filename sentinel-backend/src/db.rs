@@ -3,7 +3,10 @@ use sqlx::postgres::PgPoolOptions;
 
 use crate::types::{DataStore, RawEvent, ThreatProfile};
 
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/001_init.sql"),
+    include_str!("../migrations/002_published_score.sql"),
+];
 
 /// Run all migrations on an existing pool.
 pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
@@ -32,7 +35,7 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
     let rows = sqlx::query_as::<_, ProfileRow>(
         "SELECT character_item_id, name, threat_score, kill_count, death_count, \
          bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-         systems_visited, tribe_id, tribe_name, last_seen_system_name \
+         systems_visited, tribe_id, tribe_name, last_seen_system_name, published_score \
          FROM threat_profiles",
     )
     .fetch_all(pool)
@@ -55,6 +58,7 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
                 tribe_name: r.tribe_name,
                 recent_kills_24h: r.recent_kills_24h as u64,
                 systems_visited: r.systems_visited as u64,
+                published_score: r.published_score as u64,
                 ..Default::default()
             },
         );
@@ -99,8 +103,8 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
         "INSERT INTO threat_profiles \
          (character_item_id, name, threat_score, kill_count, death_count, \
           bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-          systems_visited, tribe_id, tribe_name, last_seen_system_name, updated_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW()) \
+          systems_visited, tribe_id, tribe_name, last_seen_system_name, published_score, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, NOW()) \
          ON CONFLICT (character_item_id) DO UPDATE SET \
           name = EXCLUDED.name, \
           threat_score = EXCLUDED.threat_score, \
@@ -114,6 +118,7 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
           tribe_id = EXCLUDED.tribe_id, \
           tribe_name = EXCLUDED.tribe_name, \
           last_seen_system_name = EXCLUDED.last_seen_system_name, \
+          published_score = EXCLUDED.published_score, \
           updated_at = NOW()",
     )
     .bind(p.character_item_id as i64)
@@ -129,6 +134,7 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
     .bind(&p.tribe_id)
     .bind(&p.tribe_name)
     .bind(&p.last_seen_system_name)
+    .bind(p.published_score as i64)
     .execute(pool)
     .await?;
     Ok(())
@@ -184,6 +190,7 @@ struct ProfileRow {
     tribe_name: String,
     recent_kills_24h: i64,
     systems_visited: i64,
+    published_score: i64,
 }
 
 #[derive(sqlx::FromRow)]

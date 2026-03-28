@@ -33,6 +33,12 @@ const eventConfig: Record<string, EventDisplay> = {
     format: (d, l) =>
       `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
   },
+  structure_kill: {
+    icon: Zap,
+    color: "text-accent-orange",
+    borderColor: "var(--color-accent-orange)",
+    format: (d, l) => `${l.n(d.killer_character_id)} destroyed a structure`,
+  },
   jump: {
     icon: Navigation,
     color: "text-accent-purple",
@@ -85,8 +91,8 @@ const eventConfig: Record<string, EventDisplay> = {
   },
   gate_blocked: {
     icon: Zap,
-    color: "text-accent-orange",
-    borderColor: "var(--color-accent-orange)",
+    color: "text-text-primary",
+    borderColor: "var(--color-text-primary)",
     format: (d, l) =>
       `${l.n(d.character_id)} blocked at gate — threat too high`,
   },
@@ -99,6 +105,13 @@ const EVENT_ORDER = [
     plural: "kills",
     tooltip:
       "Player killed another player in combat. Click to filter events by kills.",
+  },
+  {
+    key: "structure_kill",
+    singular: "structure kill",
+    plural: "structure kills",
+    tooltip:
+      "Player destroyed a structure (SSU, gate, etc). Click to filter events by structure kills.",
   },
   {
     key: "jump",
@@ -235,7 +248,7 @@ export function FeedView(props: FeedViewProps) {
 
       {/* Filter cards */}
       <div
-        class="grid grid-cols-4 lg:grid-cols-8 gap-2"
+        class="grid grid-cols-3 lg:grid-cols-9 gap-2"
         style="margin-bottom:1.5rem"
       >
         {EVENT_ORDER.map((item) => {

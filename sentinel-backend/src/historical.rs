@@ -62,6 +62,19 @@ pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>, pool: sql
         p.threat_score = crate::threat_engine::compute_score(p);
     }
 
+    // Mark remaining unresolved names so we stop retrying
+    let mut unresolved = 0;
+    for p in s.live.profiles.values_mut() {
+        if p.name.starts_with("Pilot #") {
+            unresolved += 1;
+        }
+    }
+    if unresolved > 0 {
+        tracing::info!(
+            "{unresolved} characters could not be resolved — will retry via metadata resolver"
+        );
+    }
+
     tracing::info!("Historical data load complete");
 }
 
@@ -90,13 +103,41 @@ fn extract_item_id_str(v: &serde_json::Value) -> String {
 }
 
 /// Load character names from Sui GraphQL for all known profiles.
+/// Skips if DB cache already has names (only fetches for new profiles).
 pub async fn load_character_names(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
     pool: &sqlx::PgPool,
 ) -> Result<usize, Box<dyn std::error::Error>> {
+    // Count how many profiles still need names
+    let (total_profiles, unresolved) = {
+        let s = state.read().await;
+        let total = s.live.profiles.len();
+        let unresolved = s
+            .live
+            .profiles
+            .values()
+            .filter(|p| p.name.starts_with("Pilot #"))
+            .count();
+        (total, unresolved)
+    };
+
+    // Skip full reload if most names are already cached
+    // (a few unresolved is normal — the metadata resolver handles those)
+    if unresolved == 0 {
+        tracing::info!("All character names resolved from DB cache");
+        return Ok(0);
+    }
+    if unresolved < 20 && total_profiles > 100 {
+        tracing::info!(
+            "{unresolved} unresolved names — too few for full GraphQL reload, metadata resolver will handle"
+        );
+        return Ok(0);
+    }
+
+    tracing::info!("{unresolved}/{total_profiles} characters need names — loading from GraphQL");
+
     let character_type = format!("{}::character::Character", config.world_package_id);
-    tracing::info!("Loading character names (type: {character_type})");
 
     let http = reqwest::Client::new();
     let mut cursor: Option<String> = None;
@@ -285,6 +326,10 @@ pub async fn load_historical_killmails(
             // Killmail fields are nested: {"item_id": "123", "tenant": "stillness"}
             let killer_id = extract_item_id(&contents["killer_id"]);
             let victim_id = extract_item_id(&contents["victim_id"]);
+            let is_ship_kill = contents["loss_type"]["@variant"]
+                .as_str()
+                .map(|v| v == "SHIP")
+                .unwrap_or(true); // default to ship if missing
             let timestamp_secs = contents["kill_timestamp"]
                 .as_str()
                 .and_then(|s| s.parse::<u64>().ok())
@@ -332,30 +377,38 @@ pub async fn load_historical_killmails(
                 profile.threat_score = threat_engine::compute_score(profile);
             }
 
-            if let Some(vid) = victim_id {
-                let is_new = !existing_profiles.contains(&vid);
-                let profile = s.live.profiles.entry(vid).or_insert_with(|| ThreatProfile {
-                    character_item_id: vid,
-                    name: format!("Pilot #{vid}"),
-                    ..Default::default()
-                });
-                if is_new {
-                    profile.death_count += 1;
+            // Only track victims for ship kills (not structure kills)
+            if is_ship_kill {
+                if let Some(vid) = victim_id {
+                    let is_new = !existing_profiles.contains(&vid);
+                    let profile = s.live.profiles.entry(vid).or_insert_with(|| ThreatProfile {
+                        character_item_id: vid,
+                        name: format!("Pilot #{vid}"),
+                        ..Default::default()
+                    });
+                    if is_new {
+                        profile.death_count += 1;
+                    }
+                    if !system.is_empty() {
+                        profile.last_seen_system = system.clone();
+                    }
+                    profile.threat_score = threat_engine::compute_score(profile);
                 }
-                if !system.is_empty() {
-                    profile.last_seen_system = system.clone();
-                }
-                profile.threat_score = threat_engine::compute_score(profile);
-            }
+            } // is_ship_kill
 
             // Skip event if DB already has kill events
             if has_existing_kills {
                 total += 1;
                 continue;
             }
+            let evt_type = if is_ship_kill {
+                "kill"
+            } else {
+                "structure_kill"
+            };
             s.live.push_event(
                 RawEvent {
-                    event_type: "kill".into(),
+                    event_type: evt_type.into(),
                     timestamp_ms: timestamp,
                     data: serde_json::json!({
                         "killer_character_id": killer_id,

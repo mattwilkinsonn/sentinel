@@ -25,6 +25,7 @@ services:
       DATABASE_URL: postgresql://sentinel:sentinel@postgres/sentinel
       SENTINEL_API_PORT: "3001"
       RUST_LOG: sentinel_backend=debug
+      LOG_FORMAT: pretty
     depends_on:
       postgres:
         condition: service_healthy

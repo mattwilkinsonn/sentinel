@@ -181,9 +181,10 @@ pub async fn metadata_resolver_loop(
     world_package_id: String,
 ) {
     let http = reqwest::Client::new();
+    let mut failed_names: std::collections::HashSet<u64> = std::collections::HashSet::new();
 
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
         // Collect pending system IDs and tribe IDs
         let (pending_systems, pending_tribes): (Vec<String>, Vec<String>) = {
@@ -253,23 +254,49 @@ pub async fn metadata_resolver_loop(
             }
         }
 
-        // Resolve unresolved character names via GraphQL
+        // First check DB cache for names that were resolved by historical loader
+        {
+            let mut s = state.write().await;
+            let unresolved: Vec<u64> = s
+                .live
+                .profiles
+                .values()
+                .filter(|p| p.name.starts_with("Pilot #"))
+                .map(|p| p.character_item_id)
+                .collect();
+            for id in &unresolved {
+                if let Some(name) = s.live.name_cache.get(id) {
+                    if !name.starts_with("Pilot #") {
+                        let name = name.clone();
+                        if let Some(p) = s.live.profiles.get_mut(id) {
+                            p.name = name;
+                            p.dirty = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Resolve remaining unresolved character names via GraphQL
+        // Skip names we already failed to resolve (avoid spamming GraphQL)
         let pending_names: Vec<u64> = {
             let s = state.read().await;
             s.live
                 .profiles
                 .values()
-                .filter(|p| p.name.starts_with("Pilot #"))
+                .filter(|p| {
+                    p.name.starts_with("Pilot #") && !failed_names.contains(&p.character_item_id)
+                })
                 .map(|p| p.character_item_id)
-                .take(50) // batch limit
+                .take(50)
                 .collect()
         };
 
         if !pending_names.is_empty() && !world_package_id.is_empty() {
             let char_type = format!("{world_package_id}::character::Character");
-            // Query characters by type and match item_ids
+            // Query newest characters — new pilots are at the end
             let query = format!(
-                r#"{{ objects(filter: {{ type: "{char_type}" }}, first: 50) {{
+                r#"{{ objects(filter: {{ type: "{char_type}" }}, last: 50) {{
                     nodes {{ asMoveObject {{ contents {{ json }} }} }}
                 }} }}"#
             );
@@ -280,10 +307,18 @@ pub async fn metadata_resolver_loop(
                 .await
             {
                 if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if let Some(errors) = json.get("errors") {
+                        tracing::debug!("GraphQL name query error: {errors}");
+                    }
                     let nodes = json["data"]["objects"]["nodes"]
                         .as_array()
                         .cloned()
                         .unwrap_or_default();
+                    tracing::debug!(
+                        "Name resolver: queried {} characters, looking for {:?}",
+                        nodes.len(),
+                        pending_names
+                    );
                     let mut resolved = 0;
                     let mut s = state.write().await;
                     for node in &nodes {
@@ -308,6 +343,17 @@ pub async fn metadata_resolver_loop(
                     }
                     if resolved > 0 {
                         tracing::info!("Metadata resolver: resolved {resolved} character names");
+                    }
+                    // Mark unresolved names as failed so we don't retry
+                    for id in &pending_names {
+                        if !s
+                            .live
+                            .name_cache
+                            .get(id)
+                            .is_some_and(|n| !n.starts_with("Pilot #"))
+                        {
+                            failed_names.insert(*id);
+                        }
                     }
                 }
             }
