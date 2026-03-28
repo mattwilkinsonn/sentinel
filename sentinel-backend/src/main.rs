@@ -63,6 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(e) = historical::load_historical_killmails(&config, &state).await {
         tracing::warn!("Historical killmail load failed: {e}");
     }
+    if let Err(e) = historical::load_character_events(&config, &state).await {
+        tracing::warn!("Character event load failed: {e}");
+    }
+    if let Err(e) = historical::load_jump_events(&config, &state).await {
+        tracing::warn!("Jump event load failed: {e}");
+    }
     if let Err(e) = historical::load_character_names(&config, &state).await {
         tracing::warn!("Character name load failed: {e}");
     }

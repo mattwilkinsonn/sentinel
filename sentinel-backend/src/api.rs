@@ -55,23 +55,24 @@ async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoRespon
         enriched
     };
 
+    let split_events = |events: &std::collections::VecDeque<crate::types::RawEvent>| {
+        let mut gameplay: Vec<_> = Vec::new();
+        let mut new_pilots: Vec<_> = Vec::new();
+        for e in events.iter().take(1000) {
+            if e.event_type == "new_character" {
+                new_pilots.push(e.clone());
+            } else {
+                gameplay.push(e.clone());
+            }
+        }
+        (gameplay, new_pilots)
+    };
+
     let demo_profiles = enrich(&state.demo.profiles);
-    let demo_events: Vec<_> = state
-        .demo
-        .recent_events
-        .iter()
-        .take(1000)
-        .cloned()
-        .collect();
+    let (demo_events, demo_new_pilots) = split_events(&state.demo.recent_events);
 
     let live_profiles = enrich(&state.live.profiles);
-    let live_events: Vec<_> = state
-        .live
-        .recent_events
-        .iter()
-        .take(1000)
-        .cloned()
-        .collect();
+    let (live_events, live_new_pilots) = split_events(&state.live.recent_events);
 
     // Name + system lookup maps for the frontend
     let name_map: std::collections::HashMap<u64, &str> = state
@@ -90,16 +91,24 @@ async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoRespon
 
     let system_map = &state.live.system_name_cache;
 
+    // Override total_events to exclude new_character
+    let mut demo_stats = state.demo.compute_stats();
+    demo_stats.total_events = demo_events.len() as u64;
+    let mut live_stats = state.live.compute_stats();
+    live_stats.total_events = live_events.len() as u64;
+
     Json(serde_json::json!({
         "demo": {
             "threats": demo_profiles,
             "events": demo_events,
-            "stats": state.demo.compute_stats(),
+            "new_pilots": demo_new_pilots,
+            "stats": demo_stats,
         },
         "live": {
             "threats": live_profiles,
             "events": live_events,
-            "stats": state.live.compute_stats(),
+            "new_pilots": live_new_pilots,
+            "stats": live_stats,
         },
         "names": name_map,
         "systems": system_map,

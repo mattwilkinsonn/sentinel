@@ -316,3 +316,288 @@ pub async fn load_historical_killmails(
 
     Ok(total)
 }
+
+/// Load historical character creation events from Sui GraphQL.
+pub async fn load_character_events(
+    config: &AppConfig,
+    state: &Arc<RwLock<AppState>>,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    if config.world_package_id.is_empty() {
+        return Ok(0);
+    }
+
+    let event_type = format!(
+        "{}::character::CharacterCreatedEvent",
+        config.world_package_id
+    );
+    tracing::info!("Loading character creation events");
+
+    let has_existing_events = {
+        let s = state.read().await;
+        s.live
+            .recent_events
+            .iter()
+            .any(|e| e.event_type == "new_character")
+    };
+    if has_existing_events {
+        tracing::info!("Skipping character events — already have them from DB");
+        return Ok(0);
+    }
+
+    let http = reqwest::Client::new();
+    let mut cursor: Option<String> = None;
+    let mut total = 0;
+
+    loop {
+        let after_clause = cursor
+            .as_ref()
+            .map(|c| format!(r#", after: "{}""#, c))
+            .unwrap_or_default();
+
+        let query = format!(
+            r#"{{
+                events(filter: {{ type: "{event_type}" }}, first: 50{after_clause}) {{
+                    nodes {{
+                        contents {{ json }}
+                        timestamp
+                    }}
+                    pageInfo {{
+                        hasNextPage
+                        endCursor
+                    }}
+                }}
+            }}"#
+        );
+
+        let resp = http
+            .post(&config.sui_graphql_url)
+            .json(&serde_json::json!({ "query": query }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = resp.json().await?;
+        let nodes = json["data"]["events"]["nodes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        if nodes.is_empty() {
+            break;
+        }
+
+        let mut s = state.write().await;
+        for node in &nodes {
+            let contents = &node["contents"]["json"];
+            if contents.is_null() {
+                continue;
+            }
+
+            let char_id = extract_item_id(&contents["key"]);
+            let timestamp_str = node["timestamp"].as_str().unwrap_or("");
+            let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp_str)
+                .map(|dt| dt.timestamp_millis() as u64)
+                .unwrap_or(0);
+
+            if let Some(id) = char_id {
+                // Create profile if new
+                s.live.profiles.entry(id).or_insert_with(|| ThreatProfile {
+                    character_item_id: id,
+                    name: format!("Pilot #{id}"),
+                    ..Default::default()
+                });
+
+                s.live.push_event(
+                    RawEvent {
+                        event_type: "new_character".into(),
+                        timestamp_ms: timestamp,
+                        data: serde_json::json!({ "character_id": id }),
+                    },
+                    &None,
+                );
+
+                total += 1;
+            }
+        }
+
+        let page_info = &json["data"]["events"]["pageInfo"];
+        if !page_info["hasNextPage"].as_bool().unwrap_or(false) {
+            break;
+        }
+        cursor = page_info["endCursor"].as_str().map(|s| s.to_string());
+    }
+
+    tracing::info!("Loaded {total} character creation events");
+    Ok(total)
+}
+
+/// Resolve a gate's display name from its Sui object ID.
+async fn resolve_gate_name(
+    http: &reqwest::Client,
+    graphql_url: &str,
+    gate_id: &str,
+    cache: &mut std::collections::HashMap<String, String>,
+) -> String {
+    if let Some(name) = cache.get(gate_id) {
+        return name.clone();
+    }
+    let query = format!(
+        r#"{{ object(address: "{gate_id}") {{ asMoveObject {{ contents {{ json }} }} }} }}"#
+    );
+    let name = match http
+        .post(graphql_url)
+        .json(&serde_json::json!({ "query": query }))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let json: serde_json::Value = resp.json().await.unwrap_or_default();
+            let contents = &json["data"]["object"]["asMoveObject"]["contents"]["json"];
+            contents["metadata"]["name"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Unknown Gate")
+                .to_string()
+        }
+        Err(_) => "Unknown Gate".to_string(),
+    };
+    cache.insert(gate_id.to_string(), name.clone());
+    name
+}
+
+/// Load historical jump events from Sui GraphQL.
+pub async fn load_jump_events(
+    config: &AppConfig,
+    state: &Arc<RwLock<AppState>>,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    if config.world_package_id.is_empty() {
+        return Ok(0);
+    }
+
+    let event_type = format!("{}::gate::JumpEvent", config.world_package_id);
+    tracing::info!("Loading jump events");
+
+    let has_existing = {
+        let s = state.read().await;
+        s.live.recent_events.iter().any(|e| e.event_type == "jump")
+    };
+    if has_existing {
+        tracing::info!("Skipping jump events — already have them from DB");
+        return Ok(0);
+    }
+
+    let http = reqwest::Client::new();
+    let mut cursor: Option<String> = None;
+    let mut total = 0;
+    let mut gate_name_cache: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    loop {
+        let after_clause = cursor
+            .as_ref()
+            .map(|c| format!(r#", after: "{}""#, c))
+            .unwrap_or_default();
+
+        let query = format!(
+            r#"{{
+                events(filter: {{ type: "{event_type}" }}, first: 50{after_clause}) {{
+                    nodes {{
+                        contents {{ json }}
+                        timestamp
+                    }}
+                    pageInfo {{
+                        hasNextPage
+                        endCursor
+                    }}
+                }}
+            }}"#
+        );
+
+        let resp = http
+            .post(&config.sui_graphql_url)
+            .json(&serde_json::json!({ "query": query }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = resp.json().await?;
+        let nodes = json["data"]["events"]["nodes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        if nodes.is_empty() {
+            break;
+        }
+
+        // Resolve gate names outside the state lock
+        let mut jump_data: Vec<(Option<u64>, u64, String, String)> = Vec::new();
+        for node in &nodes {
+            let contents = &node["contents"]["json"];
+            if contents.is_null() {
+                continue;
+            }
+
+            let char_id = extract_item_id(&contents["character_key"]);
+            let timestamp_str = node["timestamp"].as_str().unwrap_or("");
+            let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp_str)
+                .map(|dt| dt.timestamp_millis() as u64)
+                .unwrap_or(0);
+
+            let source_gate = contents["source_gate_id"].as_str().unwrap_or("");
+            let dest_gate = contents["destination_gate_id"].as_str().unwrap_or("");
+
+            let source_name = resolve_gate_name(
+                &http,
+                &config.sui_graphql_url,
+                source_gate,
+                &mut gate_name_cache,
+            )
+            .await;
+            let dest_name = resolve_gate_name(
+                &http,
+                &config.sui_graphql_url,
+                dest_gate,
+                &mut gate_name_cache,
+            )
+            .await;
+
+            jump_data.push((char_id, timestamp, source_name, dest_name));
+        }
+
+        let mut s = state.write().await;
+        for (char_id, timestamp, source_name, dest_name) in &jump_data {
+            if let Some(id) = char_id {
+                let profile = s.live.profiles.entry(*id).or_insert_with(|| ThreatProfile {
+                    character_item_id: *id,
+                    name: format!("Pilot #{id}"),
+                    ..Default::default()
+                });
+                profile.systems_visited += 1;
+                profile.threat_score = crate::threat_engine::compute_score(profile);
+
+                s.live.push_event(
+                    RawEvent {
+                        event_type: "jump".into(),
+                        timestamp_ms: *timestamp,
+                        data: serde_json::json!({
+                            "character_id": id,
+                            "source_gate": source_name,
+                            "dest_gate": dest_name,
+                        }),
+                    },
+                    &None,
+                );
+
+                total += 1;
+            }
+        }
+
+        let page_info = &json["data"]["events"]["pageInfo"];
+        if !page_info["hasNextPage"].as_bool().unwrap_or(false) {
+            break;
+        }
+        cursor = page_info["endCursor"].as_str().map(|s| s.to_string());
+    }
+
+    tracing::info!("Loaded {total} jump events");
+    Ok(total)
+}

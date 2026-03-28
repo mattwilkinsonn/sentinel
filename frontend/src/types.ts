@@ -27,7 +27,7 @@ export type AggregateStats = {
   avg_score: number;
   kills_24h: number;
   top_system: string;
-  events_per_min: number;
+  total_events: number;
 };
 
 export type ScoreBreakdown = {

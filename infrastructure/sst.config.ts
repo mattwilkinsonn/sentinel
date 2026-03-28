@@ -117,10 +117,13 @@ export default $config({
       },
     });
 
-    // Frontend (static site on Cloudflare Pages)
-    const frontend = new sst.cloudflare.StaticSite("SentinelFrontend", {
+    // Frontend (static site on CloudFront with Cloudflare DNS)
+    const frontend = new sst.aws.StaticSite("SentinelFrontend", {
       path: "../frontend",
-      domain,
+      domain: {
+        name: domain,
+        dns: sst.cloudflare.dns(),
+      },
       build: {
         command: "bun install && bun run build",
         output: "dist",

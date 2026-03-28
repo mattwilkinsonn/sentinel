@@ -9,7 +9,7 @@ describe("StatsBar", () => {
     avg_score: 6500,
     kills_24h: 18,
     top_system: "J-1042",
-    events_per_min: 7,
+    total_events: 7,
   };
 
   const mockProfiles: ThreatProfile[] = [
@@ -44,7 +44,7 @@ describe("StatsBar", () => {
 
     expect(screen.getByText("TRACKED")).toBeTruthy();
     expect(screen.getByText("ACTIVE THREATS")).toBeTruthy();
-    expect(screen.getByText("EVENTS/MIN")).toBeTruthy();
+    expect(screen.getByText("TOTAL EVENTS")).toBeTruthy();
     expect(screen.getByText("KILLS 24H")).toBeTruthy();
     expect(screen.getByText("TOP SYSTEM")).toBeTruthy();
   });
@@ -69,7 +69,7 @@ describe("StatsBar", () => {
   it("shows dash when no top system", () => {
     render(() => (
       <StatsBar
-        stats={{ ...mockStats, top_system: "", events_per_min: 0 }}
+        stats={{ ...mockStats, top_system: "", total_events: 0 }}
         profiles={[]}
         activeView="leaderboard"
         onStatClick={() => {}}

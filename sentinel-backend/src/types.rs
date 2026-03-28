@@ -39,7 +39,7 @@ pub struct AggregateStats {
     pub avg_score: u64,
     pub kills_24h: u64,
     pub top_system: String,
-    pub events_per_min: u64,
+    pub total_events: u64,
 }
 
 /// A single data store (profiles + events + names).
@@ -87,23 +87,12 @@ impl DataStore {
             .map(|(s, _)| s.to_string())
             .unwrap_or_default();
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        let one_min_ago = now.saturating_sub(60_000);
-        let events_per_min = self
-            .recent_events
-            .iter()
-            .filter(|e| e.timestamp_ms >= one_min_ago)
-            .count() as u64;
-
         AggregateStats {
             total_tracked: total,
             avg_score: avg,
             kills_24h,
             top_system,
-            events_per_min,
+            total_events: self.recent_events.len() as u64,
         }
     }
 }

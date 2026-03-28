@@ -61,7 +61,9 @@ const eventConfig: Record<string, EventDisplay> = {
     color: "text-accent-purple",
     borderColor: "var(--color-accent-purple)",
     format: (d, l) =>
-      `${l.n(d.character_id)} jumped to ${l.sys(d.solar_system_id)}`,
+      d.source_gate && d.dest_gate
+        ? `${l.n(d.character_id)} gated ${d.source_gate} → ${d.dest_gate}`
+        : `${l.n(d.character_id)} used smart gate`,
   },
   score_change: {
     icon: Shield,

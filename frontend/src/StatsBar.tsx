@@ -13,13 +13,13 @@ type StatsBarProps = {
 export function StatsBar(props: StatsBarProps) {
   const statItems = () => [
     {
-      label: "EVENTS/MIN",
-      value: props.stats.events_per_min.toString(),
+      label: "TOTAL EVENTS",
+      value: props.stats.total_events.toString(),
       icon: Radio,
       color: "text-accent-green",
       view: "feed" as SubView,
       tooltip:
-        "Events processed in the last 60 seconds. Click to view the live intel feed.",
+        "Total events tracked across the frontier. Click to view the live intel feed.",
     },
     {
       label: "ACTIVE THREATS",

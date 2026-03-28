@@ -25,7 +25,7 @@ const emptyStats: AggregateStats = {
   avg_score: 0,
   kills_24h: 0,
   top_system: "",
-  events_per_min: 0,
+  total_events: 0,
 };
 
 export function SentinelDashboard(props: { mode: "demo" | "live" }) {
