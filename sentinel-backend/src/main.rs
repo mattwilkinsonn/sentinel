@@ -34,36 +34,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (sse_tx, _) = tokio::sync::broadcast::channel::<String>(256);
 
-    // Connect to Postgres if DATABASE_URL is set
-    let db_pool = if let Some(ref url) = config.database_url {
-        match db::connect(url).await {
-            Ok(pool) => {
-                tracing::info!("Postgres persistence enabled");
-                Some(pool)
-            }
-            Err(e) => {
-                tracing::warn!("Failed to connect to Postgres, running without persistence: {e}");
-                None
-            }
-        }
-    } else {
-        tracing::info!("No DATABASE_URL — running in-memory only");
-        None
-    };
+    let db_pool = db::connect(&config.database_url).await?;
+    tracing::info!("Postgres connected");
 
     let state = Arc::new(RwLock::new(AppState {
         sse_tx: Some(sse_tx.clone()),
-        db: db_pool.clone(),
         ..Default::default()
     }));
 
-    // Load persisted data if DB is available
-    if let Some(ref pool) = db_pool {
+    // Load persisted data
+    {
         let mut s = state.write().await;
-        if let Err(e) = db::load_into(pool, &mut s.live).await {
-            tracing::warn!("Failed to load persisted data: {e}");
-        }
-        if let Ok(Some(cp)) = db::load_checkpoint(pool).await {
+        db::load_into(&db_pool, &mut s.live).await?;
+        if let Some(cp) = db::load_checkpoint(&db_pool).await? {
             tracing::info!("Resuming from checkpoint {cp}");
             s.last_checkpoint = Some(cp);
         }
@@ -100,12 +83,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Database sync loop (persists dirty profiles + events)
-    if let Some(pool) = db_pool {
-        let sync_state = state.clone();
-        tokio::spawn(async move {
-            db_sync_loop(pool, sync_state).await;
-        });
-    }
+    let sync_state = state.clone();
+    let sync_pool = db_pool.clone();
+    tokio::spawn(async move {
+        db_sync_loop(sync_pool, sync_state).await;
+    });
 
     // HTTP API + SSE
     let app = api::router(state.clone(), sse_tx);

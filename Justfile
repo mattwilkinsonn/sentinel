@@ -42,9 +42,13 @@ sentinel-authorize-gate:
 backend-check:
     cd sentinel-backend && cargo check
 
-# Run backend tests
+# Run backend unit tests
 backend-test:
-    cd sentinel-backend && cargo test
+    cd sentinel-backend && cargo test --lib
+
+# Run backend integration tests (requires Postgres)
+backend-test-integration: db
+    cd sentinel-backend && DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel cargo test --test db_integration
 
 # Build backend (release)
 backend-build:
@@ -116,8 +120,16 @@ deploy-remove stage="dev":
 
 # === Dev ===
 
-# Run backend + frontend dev servers in parallel
-dev:
+# Start Postgres via docker compose
+db:
+    docker compose up postgres -d
+
+# Stop Postgres
+db-stop:
+    docker compose down
+
+# Run backend + frontend dev servers (starts Postgres automatically)
+dev: db
     @echo "Starting backend on :3001 and frontend on :5173..."
-    @just backend-run &
+    @DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel just backend-run &
     @just frontend-dev

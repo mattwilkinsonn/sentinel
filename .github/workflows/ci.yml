@@ -18,7 +18,8 @@ jobs:
 
       - name: Install Sui CLI
         run: |
-          curl -fsSL https://github.com/MystenLabs/sui/releases/latest/download/sui-ubuntu-x86_64.tgz | tar xz -C /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
+          echo "$HOME/.suiup/bin" >> $GITHUB_PATH
 
       - name: Build sentinel contracts
         run: cd move-contracts/sentinel && sui move build
@@ -29,24 +30,33 @@ jobs:
   backend:
     name: Rust Backend
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: sentinel
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sentinel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://sentinel:sentinel@localhost/sentinel
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sentinel-backend
 
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            sentinel-backend/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('sentinel-backend/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Clone Sui proto definitions
         run: cd sentinel-backend && mkdir -p proto && git clone --depth 1 https://github.com/MystenLabs/sui-apis.git proto/sui-apis
@@ -54,8 +64,11 @@ jobs:
       - name: Check
         run: cd sentinel-backend && cargo check
 
-      - name: Test
-        run: cd sentinel-backend && cargo test
+      - name: Unit tests
+        run: cd sentinel-backend && cargo test --lib
+
+      - name: Integration tests
+        run: cd sentinel-backend && cargo test --test db_integration
 
       - name: Build release
         run: cd sentinel-backend && cargo build --release
@@ -65,9 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         run: cd frontend && bun install
@@ -88,9 +99,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

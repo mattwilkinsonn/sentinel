@@ -1,5 +1,4 @@
 use serde::Serialize;
-use sqlx::PgPool;
 use std::collections::{HashMap, VecDeque};
 
 /// In-memory threat profile for a character.
@@ -101,7 +100,7 @@ impl DataStore {
 }
 
 /// Shared application state with both demo and live data.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AppState {
     pub demo: DataStore,
     pub live: DataStore,
@@ -109,20 +108,6 @@ pub struct AppState {
     pub last_checkpoint: Option<u64>,
     /// SSE broadcast channel sender
     pub sse_tx: Option<tokio::sync::broadcast::Sender<String>>,
-    /// Optional Postgres pool for persistence
-    pub db: Option<PgPool>,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            demo: DataStore::default(),
-            live: DataStore::default(),
-            last_checkpoint: None,
-            sse_tx: None,
-            db: None,
-        }
-    }
 }
 
 #[cfg(test)]
