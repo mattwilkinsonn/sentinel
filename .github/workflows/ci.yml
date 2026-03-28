@@ -1,6 +1,6 @@
 name: CI
 
-on:
+"on":
   push:
     branches: [main]
   pull_request:
@@ -59,7 +59,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Clone Sui proto definitions
-        run: cd sentinel-backend && mkdir -p proto && git clone --depth 1 https://github.com/MystenLabs/sui-apis.git proto/sui-apis
+        run: |
+          cd sentinel-backend && mkdir -p proto
+          git clone --depth 1 https://github.com/MystenLabs/sui-apis.git proto/sui-apis
 
       - name: Check
         run: cd sentinel-backend && cargo check
