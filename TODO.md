@@ -19,7 +19,7 @@ Deadline: March 31, 2026 23:59 UTC
 - [ ] **Frontend: show new fields** — display `last_seen_system_name`,
       `tribe_name`, `titles`, `threat_tier` from API response.
       Titles should render as badges on threat cards.
-- [ ] **Discord bot** — simple TS bot (discord.js) that polls /api/data.
+- [ ] **Discord bot** — Rust bot (discord.js) that polls /api/data.
       Commands: `/threat <pilot>`, `/leaderboard`, `/alerts <channel>`.
       ~2 hours. Judges love seeing integrations.
 - [ ] **Demo video** — clear walkthrough: live events flowing, scoring,
