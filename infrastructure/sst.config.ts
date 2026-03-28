@@ -48,7 +48,8 @@ export default $config({
     const cluster = new sst.aws.Cluster("SentinelCluster", { vpc });
 
     // Backend service (ECS Fargate)
-    const backend = cluster.addService("SentinelBackend", {
+    const backend = new sst.aws.Service("SentinelBackend", {
+      cluster,
       image: {
         dockerfile: "../sentinel-backend/Dockerfile",
         context: "../sentinel-backend",
