@@ -10,7 +10,12 @@ Deadline: March 31, 2026 23:59 UTC
       object version fixed, InsufficientGas fixed (0.5 SUI budget)
 - [x] ~~Verify live events flowing~~ — gRPC stream connected,
       Stillness world package ID confirmed
-- [ ] **Verify publisher succeeds** — dry run passed with
+- [ ] **Debug 8 unresolved character names** — metadata resolver
+      queries last 50 Character objects but these chars are older,
+      not in that window. May need to query by specific item_ids
+      via CharacterCreatedEvent or paginate more aggressively.
+      Some may be structure entities misidentified as characters.
+- [x] ~~Verify publisher succeeds~~ — published 78 profiles across
       InsufficientGas, now increased budget + smaller batches.
       Need to confirm `Published X threat scores — tx: <digest>`.
 - [ ] **Deploy to production** — using `sst.aws.StaticSite` with
