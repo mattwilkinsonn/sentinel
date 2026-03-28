@@ -177,7 +177,11 @@ pub async fn metadata_resolver_loop(
     world_client: std::sync::Arc<tokio::sync::RwLock<WorldApiClient>>,
     state: std::sync::Arc<tokio::sync::RwLock<crate::types::AppState>>,
     pool: PgPool,
+    graphql_url: String,
+    world_package_id: String,
 ) {
+    let http = reqwest::Client::new();
+
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
@@ -249,11 +253,72 @@ pub async fn metadata_resolver_loop(
             }
         }
 
-        if !pending_systems.is_empty() || !pending_tribes.is_empty() {
-            tracing::info!(
-                "Metadata resolver: {} systems, {} tribes pending",
+        // Resolve unresolved character names via GraphQL
+        let pending_names: Vec<u64> = {
+            let s = state.read().await;
+            s.live
+                .profiles
+                .values()
+                .filter(|p| p.name.starts_with("Pilot #"))
+                .map(|p| p.character_item_id)
+                .take(50) // batch limit
+                .collect()
+        };
+
+        if !pending_names.is_empty() && !world_package_id.is_empty() {
+            let char_type = format!("{world_package_id}::character::Character");
+            // Query characters by type and match item_ids
+            let query = format!(
+                r#"{{ objects(filter: {{ type: "{char_type}" }}, first: 50) {{
+                    nodes {{ asMoveObject {{ contents {{ json }} }} }}
+                }} }}"#
+            );
+            if let Ok(resp) = http
+                .post(&graphql_url)
+                .json(&serde_json::json!({ "query": query }))
+                .send()
+                .await
+            {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    let nodes = json["data"]["objects"]["nodes"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    let mut resolved = 0;
+                    let mut s = state.write().await;
+                    for node in &nodes {
+                        let contents = &node["asMoveObject"]["contents"]["json"];
+                        let item_id = contents["key"]["item_id"]
+                            .as_str()
+                            .and_then(|s| s.parse::<u64>().ok());
+                        let name = contents["metadata"]["name"]
+                            .as_str()
+                            .filter(|n| !n.is_empty());
+                        if let (Some(id), Some(name)) = (item_id, name) {
+                            if pending_names.contains(&id) {
+                                s.live.name_cache.insert(id, name.to_string());
+                                if let Some(p) = s.live.profiles.get_mut(&id) {
+                                    p.name = name.to_string();
+                                    p.dirty = true;
+                                }
+                                let _ = crate::db::upsert_character_name(&pool, id, name).await;
+                                resolved += 1;
+                            }
+                        }
+                    }
+                    if resolved > 0 {
+                        tracing::info!("Metadata resolver: resolved {resolved} character names");
+                    }
+                }
+            }
+        }
+
+        if !pending_systems.is_empty() || !pending_tribes.is_empty() || !pending_names.is_empty() {
+            tracing::debug!(
+                "Metadata resolver: {} systems, {} tribes, {} names pending",
                 pending_systems.len(),
-                pending_tribes.len()
+                pending_tribes.len(),
+                pending_names.len()
             );
         }
     }

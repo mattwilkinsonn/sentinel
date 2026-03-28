@@ -189,6 +189,37 @@ async fn resolve_object(
     Ok((version, digest))
 }
 
+/// Resolve the initial_shared_version for a shared object.
+async fn resolve_shared_initial_version(
+    http: &reqwest::Client,
+    rpc_url: &str,
+    object_id: &str,
+) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+    let resp: serde_json::Value = http
+        .post(rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0", "id": 1,
+            "method": "sui_getObject",
+            "params": [object_id, {"showOwner": true}]
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    let owner = &resp["result"]["data"]["owner"];
+    let initial_version = owner["Shared"]["initial_shared_version"]
+        .as_u64()
+        .or_else(|| {
+            owner["Shared"]["initial_shared_version"]
+                .as_str()
+                .and_then(|v| v.parse().ok())
+        })
+        .ok_or("not a shared object or missing initial_shared_version")?;
+
+    Ok(initial_version)
+}
+
 async fn get_gas_coin(
     http: &reqwest::Client,
     rpc_url: &str,
@@ -240,7 +271,8 @@ async fn publish_batch(
     let clock_id: Address = CLOCK_ID.parse()?;
 
     // Resolve live object references
-    let (reg_version, _) = resolve_object(http, rpc_url, &config.threat_registry_id).await?;
+    let reg_initial_version =
+        resolve_shared_initial_version(http, rpc_url, &config.threat_registry_id).await?;
     let (cap_version, cap_digest) = resolve_object(http, rpc_url, admin_cap_id).await?;
     let (gas_id, gas_version, gas_digest) =
         get_gas_coin(http, rpc_url, &format!("{sender}")).await?;
@@ -260,7 +292,7 @@ async fn publish_batch(
     // Build PTB
     let mut tx = TransactionBuilder::new();
 
-    let registry_arg = tx.object(ObjectInput::shared(registry_id, reg_version, true));
+    let registry_arg = tx.object(ObjectInput::shared(registry_id, reg_initial_version, true));
     let cap_arg = tx.object(ObjectInput::owned(cap_id, cap_version, cap_digest));
     let char_ids_arg = tx.pure(&char_ids);
     let scores_arg = tx.pure(&scores);

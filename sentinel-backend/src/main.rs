@@ -105,7 +105,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let meta_client = world_client.clone();
     let meta_pool = db_pool.clone();
     tokio::spawn(async move {
-        world_api::metadata_resolver_loop(meta_client, meta_state, meta_pool).await;
+        world_api::metadata_resolver_loop(
+            meta_client,
+            meta_state,
+            meta_pool,
+            config.sui_graphql_url.clone(),
+            config.world_package_id.clone(),
+        )
+        .await;
     });
 
     // Database sync loop (persists dirty profiles + events)

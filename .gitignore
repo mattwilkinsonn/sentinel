@@ -23,6 +23,9 @@ infrastructure/.sst/
 .env
 .env.local
 
+# Local notes
+*.local.md
+
 # OS
 .DS_Store
 

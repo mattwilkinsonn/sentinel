@@ -52,9 +52,13 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
                     profile.name = name;
                 }
             }
-            Err(e) => {
-                tracing::debug!("Could not resolve name for character {character_item_id}: {e}");
-                // Cache a fallback so we don't retry every cycle
+            Err(_) => {
+                // gRPC resolver can't map item_id → Sui object address.
+                // Names are resolved via the GraphQL historical loader instead.
+                // New characters will get names on next restart or historical reload.
+                tracing::debug!(
+                    "Character {character_item_id}: name pending (will resolve on next historical load)"
+                );
                 let mut s = state.write().await;
                 let fallback = format!("Pilot #{character_item_id}");
                 s.live
@@ -82,20 +86,11 @@ async fn resolve_one(
     _client: &mut LedgerServiceClient<Channel>,
     character_item_id: u64,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    // We need the Sui object ID for this character, not the item_id.
-    // The item_id is a game-level identifier stored inside the Character object.
-    //
-    // For now, we can't directly look up by item_id via gRPC — we'd need
-    // to search dynamic fields or use an indexer. As a pragmatic solution,
-    // if events include the Sui object ID for characters, we'd use that.
-    //
-    // For the hackathon demo, we'll use item_id as the display and resolve
-    // names when we have the actual Sui object IDs from event data.
-    //
-    // TODO: When processing events, extract the Character Sui object ID
-    // and store it alongside item_id, then use GetObject here.
-
-    Err(format!("Object ID not available for item_id {character_item_id}").into())
+    // gRPC GetObject requires a Sui object address (0x...), but we only have
+    // the game item_id (a number). There's no gRPC API to map item_id → address.
+    // Character names are resolved by the GraphQL historical loader instead,
+    // which queries all Character objects and extracts metadata.name.
+    Err(format!("awaiting historical load for item_id {character_item_id}").into())
 }
 
 /// Spawn a background task that periodically resolves pending names.

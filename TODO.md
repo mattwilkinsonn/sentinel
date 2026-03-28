@@ -55,6 +55,9 @@ Deadline: March 31, 2026 23:59 UTC
 - [ ] **Auto-update WORLD_PACKAGE_ID** — query `evefrontier/world-contracts`
       GitHub releases or chain state at deploy time to get the latest
       Stillness world package ID. Currently hardcoded in `sst.config.ts`.
+- [ ] **Frontend error logging (Sentry)** — catch unresolved character
+      names, failed API calls, and other edge cases. Would surface issues
+      where the GraphQL resolver consistently fails for certain characters.
 - [ ] **Investigate SST Cloudflare StaticSite bug** — `Could not resolve "sst"`
       in worker.ts:480 during `Runtime.Build`. Affects all Cloudflare Worker-based
       components on SST 4.5.12. Static env vars don't help — bug is in the
@@ -92,40 +95,6 @@ Deadline: March 31, 2026 23:59 UTC
 - [x] Background historical loading (API responsive immediately)
 - [x] All 50 backend tests + 43 frontend tests passing
 - [x] Zero warnings in Rust, zero biome errors in TypeScript
-
-## Ideas from competitor projects
-
-### From WatchTower (AreteDriver/watchtower)
-
-- Behavioral fingerprinting (solo vs fleet, timezone clustering)
-- Kill network graphs (attacker-victim relationships)
-- AI-generated story feed with Claude API
-- Discord bot with 21 slash commands
-- On-chain subscription tiers
-- OPSEC scoring
-- 822+ tests, 80% coverage
-
-### From Monolith (AreteDriver/monolith)
-
-- Canvas2D system map with 24K systems at 60fps
-- Anomaly detection rules engine (39 rules)
-- Bug report generation with chain evidence
-- GitHub auto-filing for critical detections
-- Item ledger tracking (mints, transfers, destructions)
-
-### From Frontier Tribe OS (AreteDriver/frontier-tribe-os)
-
-- AI-powered threat briefings ("Warden" module)
-- Census/roster management with World API sync
-- Production job queue tracking
-- Non-custodial treasury monitoring via Sui wallet
-
-### From other hackathon projects
-
-- Powerlay Frontier — tribe contract system, production planning
-- CradleOS — ship fitting tool, character/tribe lookup via GraphQL
-- KARUM — marketplace network for SSU owners
-- Flappy Frontier — on-chain mini-game, sponsored gas for UX
 
 ## Architecture notes
 

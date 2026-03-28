@@ -60,7 +60,26 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
       stats: emptyStats,
     };
   const profiles = () => current().threats;
-  const events = () => current().events;
+  // Hide events with unresolved character names — better to show fewer
+  // events with real names than pollute the feed with raw IDs
+  const charIdKeys = [
+    "killer_character_id",
+    "target_item_id",
+    "character_id",
+    "poster_id",
+    "contributor_id",
+    "hunter_id",
+  ];
+  const events = () => {
+    const n = data()?.names ?? {};
+    return current().events.filter((e) => {
+      const d = e.data as Record<string, unknown>;
+      return charIdKeys.every((key) => {
+        const v = d[key];
+        return v == null || !!n[String(v)];
+      });
+    });
+  };
   const newPilots = () => current().new_pilots ?? [];
   const newPilots24h = () => {
     const dayAgo = Date.now() - 86_400_000;
