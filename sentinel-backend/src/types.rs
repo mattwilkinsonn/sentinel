@@ -19,9 +19,12 @@ pub struct ThreatProfile {
     pub recent_kills_24h: u64,
     /// Number of unique systems visited
     pub systems_visited: u64,
-    /// Whether this profile has been modified since last publish
+    /// Whether this profile has been modified since last DB sync
     #[serde(skip)]
     pub dirty: bool,
+    /// Last score published on-chain (to avoid re-publishing unchanged scores)
+    #[serde(skip)]
+    pub published_score: u64,
 }
 
 /// A raw event captured from the checkpoint stream.

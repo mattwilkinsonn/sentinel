@@ -65,23 +65,29 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         };
         tokio::time::sleep(wait).await;
 
-        let dirty_profiles: Vec<_> = {
+        let publishable: Vec<_> = {
             let state = state.read().await;
             state
                 .live
                 .profiles
                 .values()
-                .filter(|p| p.dirty)
+                .filter(|p| p.threat_score > 0 && p.threat_score != p.published_score)
                 .cloned()
                 .collect()
         };
 
-        if dirty_profiles.is_empty() {
+        if publishable.is_empty() {
+            tracing::debug!("Publisher: no score changes to publish");
             continue;
         }
 
+        tracing::info!(
+            "Publisher: {} profiles with score changes",
+            publishable.len()
+        );
+
         let mut batch_ok = true;
-        for chunk in dirty_profiles.chunks(50) {
+        for chunk in publishable.chunks(50) {
             match publish_batch(
                 &config,
                 &http,
@@ -98,7 +104,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
                     let mut state = state.write().await;
                     for p in chunk {
                         if let Some(profile) = state.live.profiles.get_mut(&p.character_item_id) {
-                            profile.dirty = false;
+                            profile.published_score = profile.threat_score;
                         }
                     }
                 }
@@ -295,11 +301,56 @@ async fn publish_batch(
     let transaction = tx.try_build()?;
     let signature = admin_key.sign_transaction(&transaction)?;
 
-    // Encode and submit
+    // Encode to base64
     let b64 = base64::engine::general_purpose::STANDARD;
-    let tx_b64 = b64.encode(bcs::to_bytes(&transaction)?);
-    let sig_b64 = b64.encode(bcs::to_bytes(&signature)?);
+    let tx_bytes = bcs::to_bytes(&transaction)?;
+    let tx_b64 = b64.encode(&tx_bytes);
 
+    // Signature must be raw bytes: [scheme_flag | sig_64bytes | pubkey_32bytes]
+    // NOT BCS-encoded (which adds a length prefix)
+    let sig_raw = match &signature {
+        sui_sdk_types::UserSignature::Simple(sui_sdk_types::SimpleSignature::Ed25519 {
+            signature: sig,
+            public_key: pk,
+        }) => {
+            let mut buf = vec![0u8]; // 0x00 = ed25519 scheme flag
+            buf.extend_from_slice(sig.as_ref());
+            buf.extend_from_slice(pk.as_ref());
+            buf
+        }
+        _ => return Err("Unsupported signature type".into()),
+    };
+    let sig_b64 = b64.encode(&sig_raw);
+
+    tracing::debug!(
+        "Publishing tx: {} bytes, sig: {} bytes, sender: {sender}",
+        tx_bytes.len(),
+        sig_raw.len()
+    );
+
+    // First try dry run to get better error messages
+    let dry_run: serde_json::Value = http
+        .post(rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0", "id": 1,
+            "method": "sui_dryRunTransactionBlock",
+            "params": [tx_b64]
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    if let Some(error) = dry_run.get("error") {
+        return Err(format!("Dry run error: {error}").into());
+    }
+
+    let status = &dry_run["result"]["effects"]["status"];
+    if status["status"].as_str() != Some("success") {
+        return Err(format!("Dry run failed: {status}").into());
+    }
+
+    // Execute for real
     let resp: serde_json::Value = http
         .post(rpc_url)
         .json(&serde_json::json!({
@@ -313,7 +364,7 @@ async fn publish_batch(
         .await?;
 
     if let Some(error) = resp.get("error") {
-        return Err(format!("RPC error: {error}").into());
+        return Err(format!("Execute error: {error}").into());
     }
 
     Ok(resp["result"]["digest"]

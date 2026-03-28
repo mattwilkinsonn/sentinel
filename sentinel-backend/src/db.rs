@@ -55,7 +55,7 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
                 tribe_name: r.tribe_name,
                 recent_kills_24h: r.recent_kills_24h as u64,
                 systems_visited: r.systems_visited as u64,
-                dirty: false,
+                ..Default::default()
             },
         );
     }

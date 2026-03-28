@@ -52,6 +52,9 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Nice to have
 
+- [ ] **Auto-update WORLD_PACKAGE_ID** — query `evefrontier/world-contracts`
+      GitHub releases or chain state at deploy time to get the latest
+      Stillness world package ID. Currently hardcoded in `sst.config.ts`.
 - [ ] **Investigate SST Cloudflare StaticSite bug** — `Could not resolve "sst"`
       in worker.ts:480 during `Runtime.Build`. Affects all Cloudflare Worker-based
       components on SST 4.5.12. Static env vars don't help — bug is in the
