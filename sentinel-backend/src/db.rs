@@ -3,6 +3,19 @@ use sqlx::postgres::PgPoolOptions;
 
 use crate::types::{DataStore, RawEvent, ThreatProfile};
 
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/001_init.sql"),
+    include_str!("../migrations/002_world_metadata.sql"),
+];
+
+/// Run all migrations on an existing pool.
+pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
+    for sql in MIGRATIONS {
+        sqlx::raw_sql(sql).execute(pool).await?;
+    }
+    Ok(())
+}
+
 /// Connect to Postgres and run migrations.
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let pool = PgPoolOptions::new()
@@ -10,13 +23,7 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .connect(database_url)
         .await?;
 
-    // Run migrations from embedded SQL
-    sqlx::raw_sql(include_str!("../migrations/001_init.sql"))
-        .execute(&pool)
-        .await?;
-    sqlx::raw_sql(include_str!("../migrations/002_world_metadata.sql"))
-        .execute(&pool)
-        .await?;
+    run_migrations(&pool).await?;
 
     tracing::info!("Database connected and migrations applied");
     Ok(pool)

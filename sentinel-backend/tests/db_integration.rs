@@ -10,26 +10,27 @@ use sqlx::PgPool;
 mod common {
     use sqlx::PgPool;
 
-    /// Connect and run migrations against a test database.
-    /// Each test gets a clean slate by truncating all tables.
+    /// Run all migrations and truncate all app tables.
     pub async fn setup(pool: &PgPool) {
-        sqlx::raw_sql(include_str!("../migrations/001_init.sql"))
-            .execute(pool)
+        sentinel_backend::db::run_migrations(pool)
             .await
-            .expect("migration 001 failed");
+            .expect("migrations failed");
 
-        sqlx::raw_sql(include_str!("../migrations/002_world_metadata.sql"))
-            .execute(pool)
-            .await
-            .expect("migration 002 failed");
-
-        sqlx::raw_sql(
-            "TRUNCATE threat_profiles, raw_events, checkpoint_cursor, \
-             solar_system_cache, tribe_cache",
+        // Truncate all app tables for a clean slate
+        let tables = sqlx::query_scalar::<_, String>(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
         )
-        .execute(pool)
+        .fetch_all(pool)
         .await
-        .expect("truncate failed");
+        .expect("failed to list tables");
+
+        if !tables.is_empty() {
+            let truncate = format!("TRUNCATE {} CASCADE", tables.join(", "));
+            sqlx::raw_sql(&truncate)
+                .execute(pool)
+                .await
+                .expect("truncate failed");
+        }
     }
 }
 
