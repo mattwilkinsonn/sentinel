@@ -66,7 +66,7 @@ pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>, pool: sql
         // recomputation can shift scores (event deque overflow, 24h
         // window drift, systems_visited double-count) without any
         // genuinely new data arriving.
-        if p.published_score > 0 {
+        if p.published_score > 0 && p.published_score != p.threat_score {
             p.published_score = p.threat_score;
             p.dirty = true;
         }
