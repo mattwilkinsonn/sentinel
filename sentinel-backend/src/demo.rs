@@ -18,106 +18,132 @@ struct DemoCharacter {
     system_name: &'static str,
 }
 
+// Designed for a spread across all tiers: CRITICAL > HIGH > MODERATE > LOW
+// Score formula: recency(600*r, max 3500) + kills(log2*600, max 2000) + kd(kd*400, max 1500) + bounties(500*b, max 1500) + movement(100*s, max 500)
 const DEMO_CHARACTERS: &[DemoCharacter] = &[
+    // CRITICAL tier (7500+) — the apex threats
+    DemoCharacter {
+        id: 90042,
+        name: "Zero Pragma",
+        kills: 87,
+        deaths: 3,
+        bounties: 3,
+        recent_24h: 8,
+        systems: 5,
+        system_name: "Z-0091",
+    },
     DemoCharacter {
         id: 88401,
         name: "Vex Nightburn",
-        kills: 11,
-        deaths: 3,
+        kills: 64,
+        deaths: 2,
         bounties: 2,
+        recent_24h: 6,
+        systems: 4,
+        system_name: "J-1042",
+    },
+    // HIGH tier (5000-7500)
+    DemoCharacter {
+        id: 83216,
+        name: "Wraith Decimax",
+        kills: 42,
+        deaths: 5,
+        bounties: 2,
+        recent_24h: 5,
+        systems: 3,
+        system_name: "Z-0091",
+    },
+    DemoCharacter {
+        id: 71035,
+        name: "Lyra Ironveil",
+        kills: 31,
+        deaths: 3,
+        bounties: 1,
         recent_24h: 4,
         systems: 6,
-        system_name: "J-1042",
+        system_name: "K-9731",
     },
     DemoCharacter {
         id: 55102,
         name: "Kira Ashfall",
-        kills: 8,
-        deaths: 5,
+        kills: 25,
+        deaths: 8,
         bounties: 1,
         recent_24h: 3,
         systems: 8,
         system_name: "K-9731",
     },
+    // MODERATE tier (2500-5000)
     DemoCharacter {
         id: 77320,
         name: "Dread Solaris",
-        kills: 7,
-        deaths: 1,
+        kills: 18,
+        deaths: 4,
         bounties: 1,
         recent_24h: 2,
         systems: 3,
         system_name: "X-4419",
     },
     DemoCharacter {
+        id: 15467,
+        name: "Nyx Corvane",
+        kills: 12,
+        deaths: 6,
+        bounties: 0,
+        recent_24h: 2,
+        systems: 5,
+        system_name: "X-4419",
+    },
+    DemoCharacter {
+        id: 47688,
+        name: "Rook Vantage",
+        kills: 9,
+        deaths: 5,
+        bounties: 1,
+        recent_24h: 1,
+        systems: 6,
+        system_name: "X-4419",
+    },
+    DemoCharacter {
         id: 12055,
         name: "Mira Voidwalker",
-        kills: 5,
-        deaths: 6,
-        bounties: 1,
+        kills: 7,
+        deaths: 9,
+        bounties: 0,
         recent_24h: 1,
         systems: 12,
         system_name: "N-8820",
     },
+    // LOW tier (0-2500) — explorers, victims, newcomers
     DemoCharacter {
         id: 33781,
         name: "Talon Drift",
         kills: 4,
-        deaths: 7,
+        deaths: 11,
         bounties: 0,
         recent_24h: 1,
         systems: 5,
         system_name: "J-1042",
     },
     DemoCharacter {
-        id: 90042,
-        name: "Zero Pragma",
-        kills: 14,
-        deaths: 2,
-        bounties: 3,
-        recent_24h: 6,
-        systems: 2,
-        system_name: "Z-0091",
+        id: 28903,
+        name: "Jace Holloway",
+        kills: 3,
+        deaths: 7,
+        bounties: 0,
+        recent_24h: 0,
+        systems: 9,
+        system_name: "N-8820",
     },
     DemoCharacter {
         id: 41199,
         name: "Sable Ren",
-        kills: 3,
-        deaths: 3,
+        kills: 2,
+        deaths: 4,
         bounties: 0,
         recent_24h: 0,
         systems: 7,
         system_name: "H-5534",
-    },
-    DemoCharacter {
-        id: 62830,
-        name: "Ash Meridian",
-        kills: 1,
-        deaths: 8,
-        bounties: 0,
-        recent_24h: 0,
-        systems: 4,
-        system_name: "K-9731",
-    },
-    DemoCharacter {
-        id: 15467,
-        name: "Nyx Corvane",
-        kills: 6,
-        deaths: 3,
-        bounties: 1,
-        recent_24h: 2,
-        systems: 5,
-        system_name: "X-4419",
-    },
-    DemoCharacter {
-        id: 28903,
-        name: "Jace Holloway",
-        kills: 3,
-        deaths: 4,
-        bounties: 0,
-        recent_24h: 1,
-        systems: 9,
-        system_name: "N-8820",
     },
     DemoCharacter {
         id: 50710,
@@ -130,44 +156,24 @@ const DEMO_CHARACTERS: &[DemoCharacter] = &[
         system_name: "J-1042",
     },
     DemoCharacter {
-        id: 83216,
-        name: "Wraith Decimax",
-        kills: 9,
-        deaths: 2,
-        bounties: 2,
-        recent_24h: 3,
+        id: 62830,
+        name: "Ash Meridian",
+        kills: 1,
+        deaths: 12,
+        bounties: 0,
+        recent_24h: 1,
         systems: 4,
-        system_name: "Z-0091",
+        system_name: "K-9731",
     },
     DemoCharacter {
         id: 19544,
         name: "Lux Tenebris",
-        kills: 0,
-        deaths: 3,
+        kills: 2,
+        deaths: 5,
         bounties: 0,
-        recent_24h: 0,
+        recent_24h: 1,
         systems: 3,
         system_name: "H-5534",
-    },
-    DemoCharacter {
-        id: 47688,
-        name: "Rook Vantage",
-        kills: 4,
-        deaths: 5,
-        bounties: 1,
-        recent_24h: 1,
-        systems: 6,
-        system_name: "X-4419",
-    },
-    DemoCharacter {
-        id: 71035,
-        name: "Lyra Ironveil",
-        kills: 7,
-        deaths: 1,
-        bounties: 1,
-        recent_24h: 2,
-        systems: 4,
-        system_name: "K-9731",
     },
 ];
 
@@ -198,7 +204,7 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
             last_kill_timestamp: now - 3_600_000 + (c.id % 3600) * 1000,
             ..Default::default()
         };
-        profile.threat_score = threat_engine::compute_score(&profile).min(9500);
+        profile.threat_score = threat_engine::compute_score(&profile);
         s.demo.profiles.insert(c.id, profile);
     }
 
@@ -506,11 +512,11 @@ pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
                     if let Some(sys) = data["solar_system_id"].as_str() {
                         p.last_seen_system = sys.to_string();
                     }
-                    p.threat_score = threat_engine::compute_score(p).min(9500);
+                    p.threat_score = threat_engine::compute_score(p);
                 }
                 if let Some(p) = s.demo.profiles.get_mut(&victim_id) {
                     p.death_count += 1;
-                    p.threat_score = threat_engine::compute_score(p).min(9500);
+                    p.threat_score = threat_engine::compute_score(p);
                 }
             }
             "jump" => {
@@ -522,21 +528,21 @@ pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
                             p.last_seen_system = sys.to_string();
                         }
                     }
-                    p.threat_score = threat_engine::compute_score(p).min(9500);
+                    p.threat_score = threat_engine::compute_score(p);
                 }
             }
             "bounty_posted" => {
                 let target_id = data["target_item_id"].as_u64().unwrap();
                 if let Some(p) = s.demo.profiles.get_mut(&target_id) {
                     p.bounty_count += 1;
-                    p.threat_score = threat_engine::compute_score(p).min(9500);
+                    p.threat_score = threat_engine::compute_score(p);
                 }
             }
             "bounty_removed" => {
                 let target_id = data["target_item_id"].as_u64().unwrap();
                 if let Some(p) = s.demo.profiles.get_mut(&target_id) {
                     p.bounty_count = p.bounty_count.saturating_sub(1);
-                    p.threat_score = threat_engine::compute_score(p).min(9500);
+                    p.threat_score = threat_engine::compute_score(p);
                 }
             }
             _ => {}

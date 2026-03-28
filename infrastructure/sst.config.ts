@@ -81,12 +81,11 @@ export default $config({
     const cluster = new sst.aws.Cluster("SentinelCluster", { vpc });
 
     // Backend service (ECS Fargate)
+    const imageTag = process.env.IMAGE_TAG ?? "latest";
     const backend = new sst.aws.Service("SentinelBackend", {
       cluster,
-      image: {
-        dockerfile: "../sentinel-backend/Dockerfile",
-        context: "../sentinel-backend",
-      },
+      architecture: "arm64",
+      image: `ghcr.io/mattwilkinsonn/sentinel/backend:${imageTag}`,
       health: {
         command: [
           "CMD-SHELL",
