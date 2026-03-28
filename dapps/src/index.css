@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* EVE Frontier custom theme */
+@theme {
+  --color-bg-primary: #0B0B0B;
+  --color-bg-card: rgba(250, 250, 229, 0.03);
+  --color-bg-card-hover: rgba(250, 250, 229, 0.06);
+  --color-text-primary: #FAFAE5;
+  --color-text-secondary: rgba(250, 250, 229, 0.6);
+  --color-text-muted: rgba(250, 250, 229, 0.4);
+  --color-border-default: rgba(250, 250, 229, 0.12);
+  --color-border-hover: rgba(250, 250, 229, 0.25);
+  --color-accent-gold: #ffd700;
+  --color-accent-cyan: #00e5ff;
+  --color-accent-red: #ff4444;
+  --color-accent-green: #44ff88;
+  --color-accent-purple: #a855f7;
+  --color-tier-bronze: #cd7f32;
+  --color-tier-silver: #c0c0c0;
+  --color-tier-gold: #ffd700;
+  --color-tier-diamond: #b9f2ff;
+}
+
+/* Keyframe animations */
+@keyframes pulse-urgent {
+  0%, 100% { border-color: rgba(255, 68, 68, 0.3); box-shadow: 0 0 0px rgba(255, 68, 68, 0); }
+  50% { border-color: rgba(255, 68, 68, 0.8); box-shadow: 0 0 15px rgba(255, 68, 68, 0.25); }
+}
+
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.1); }
+  50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Base styles */
+* { box-sizing: border-box; }
+
+body {
+  font-family: "Favorit", "ABC Favorit Mono", monospace;
+  font-weight: 300;
+  font-size: 16px;
+  line-height: 150%;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-primary);
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Frontier Disket Mono", "Fronter Disket Mono", monospace;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  line-height: 120%;
+  margin: 0;
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: var(--color-bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.glass-card:hover {
+  background: var(--color-bg-card-hover);
+  border-color: var(--color-border-hover);
+}
+
+/* Neon glow effect for high-value bounties */
+.neon-glow-gold {
+  animation: pulse-gold 3s ease-in-out infinite;
+}
+
+.neon-glow-urgent {
+  animation: pulse-urgent 2s ease-in-out infinite;
+}
+
+/* Scanline overlay for headers */
+.scanline-overlay {
+  position: relative;
+  overflow: hidden;
+}
+.scanline-overlay::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(250, 250, 229, 0.02) 2px,
+    rgba(250, 250, 229, 0.02) 4px
+  );
+  pointer-events: none;
+}
+
+/* Status badges */
+.badge {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+/* Button base */
+button {
+  font-family: "Frontier Disket Mono", monospace;
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 150%;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* Input base */
+input, select, textarea {
+  font-family: "Favorit", "ABC Favorit Mono", monospace;
+  font-size: 14px;
+  background: rgba(250, 250, 229, 0.05);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+input:focus {
+  border-color: var(--color-accent-cyan);
+}

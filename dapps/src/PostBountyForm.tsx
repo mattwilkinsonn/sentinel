@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Box, Flex, Text } from "@radix-ui/themes";
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
+import { Send } from "lucide-react";
 
 const CLOCK_OBJECT_ID = "0x6";
 
@@ -46,39 +46,24 @@ export function PostBountyForm({
     setError(null);
 
     try {
-      if (
-        !targetItemId ||
-        !rewardTypeId ||
-        !storageUnitId ||
-        !extensionConfigId ||
-        !characterId ||
-        !worldPackageId
-      ) {
+      if (!targetItemId || !rewardTypeId || !storageUnitId || !extensionConfigId || !characterId || !worldPackageId) {
         throw new Error("All fields are required");
       }
 
       const durationMs = BigInt(Number(durationHours) * 60 * 60 * 1000);
-
-      // Look up the Character's OwnerCap ID
-      // For now, the user needs to provide it or we fetch from chain
-      const characterOwnerCapId =
-        import.meta.env.VITE_CHARACTER_OWNER_CAP_ID || "";
+      const characterOwnerCapId = import.meta.env.VITE_CHARACTER_OWNER_CAP_ID || "";
       if (!characterOwnerCapId) {
-        throw new Error(
-          "VITE_CHARACTER_OWNER_CAP_ID not set - needed for borrow_owner_cap"
-        );
+        throw new Error("VITE_CHARACTER_OWNER_CAP_ID not set");
       }
 
       const tx = new Transaction();
 
-      // Borrow Character OwnerCap
       const [ownerCap, returnReceipt] = tx.moveCall({
         target: `${worldPackageId}::character::borrow_owner_cap`,
         typeArguments: [`${worldPackageId}::character::Character`],
         arguments: [tx.object(characterId), tx.object(characterOwnerCapId)],
       });
 
-      // Post bounty
       tx.moveCall({
         target: `${builderPackageId}::bounty_board::post_bounty`,
         typeArguments: [`${worldPackageId}::character::Character`],
@@ -97,17 +82,13 @@ export function PostBountyForm({
         ],
       });
 
-      // Return OwnerCap
       tx.moveCall({
         target: `${worldPackageId}::character::return_owner_cap`,
         typeArguments: [`${worldPackageId}::character::Character`],
         arguments: [tx.object(characterId), ownerCap, returnReceipt],
       });
 
-      await signAndExecuteTransaction({
-        transaction: tx,
-      });
-
+      await signAndExecuteTransaction({ transaction: tx });
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transaction failed");
@@ -116,154 +97,131 @@ export function PostBountyForm({
     }
   };
 
-  const inputStyle: React.CSSProperties = {
-    background: "rgba(250, 250, 229, 0.05)",
-    border: "1px solid var(--border)",
-    borderRadius: "4px",
-    padding: "8px 12px",
-    color: "var(--text)",
-    fontFamily: "var(--font-mono)",
-    fontSize: "14px",
-    width: "100%",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: "12px",
-    color: "var(--text-secondary)",
-    marginBottom: "4px",
-  };
-
   return (
-    <Box
-      style={{
-        padding: "20px",
-        border: "1px solid var(--border)",
-        borderRadius: "8px",
-        marginBottom: "20px",
-      }}
-    >
-      <Text weight="bold" size="3" style={{ marginBottom: "16px", display: "block" }}>
-        Post New Bounty
-      </Text>
+    <div className="glass-card p-5">
+      <h4 className="text-sm tracking-wider mb-4">POST NEW BOUNTY</h4>
 
       <form onSubmit={handleSubmit}>
-        <Flex direction="column" gap="3">
-          <Flex gap="3">
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Target Character ID</div>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Target Character ID</label>
               <input
-                style={inputStyle}
                 value={targetItemId}
                 onChange={(e) => setTargetItemId(e.target.value)}
                 placeholder="e.g. 12345"
                 required
+                className="w-full"
               />
-            </Box>
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Target Tenant</div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Target Tenant</label>
               <input
-                style={inputStyle}
                 value={targetTenant}
                 onChange={(e) => setTargetTenant(e.target.value)}
                 placeholder="e.g. dev"
                 required
+                className="w-full"
               />
-            </Box>
-          </Flex>
+            </div>
+          </div>
 
-          <Flex gap="3">
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Reward Type ID</div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Reward Type ID</label>
               <input
-                style={inputStyle}
                 value={rewardTypeId}
                 onChange={(e) => setRewardTypeId(e.target.value)}
                 placeholder="e.g. 88069"
                 required
+                className="w-full"
               />
-            </Box>
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Reward Quantity</div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Reward Quantity</label>
               <input
-                style={inputStyle}
                 type="number"
                 min="1"
                 value={rewardQuantity}
                 onChange={(e) => setRewardQuantity(e.target.value)}
                 required
+                className="w-full"
               />
-            </Box>
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Duration (hours)</div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Duration (hours)</label>
               <input
-                style={inputStyle}
                 type="number"
                 min="1"
                 max="168"
                 value={durationHours}
                 onChange={(e) => setDurationHours(e.target.value)}
                 required
+                className="w-full"
               />
-            </Box>
-          </Flex>
+            </div>
+          </div>
 
-          <Flex gap="3">
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Storage Unit ID</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Storage Unit ID</label>
               <input
-                style={inputStyle}
                 value={storageUnitId}
                 onChange={(e) => setStorageUnitId(e.target.value)}
                 placeholder="0x..."
                 required
+                className="w-full"
               />
-            </Box>
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Character ID</div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Character ID</label>
               <input
-                style={inputStyle}
                 value={characterId}
                 onChange={(e) => setCharacterId(e.target.value)}
                 placeholder="0x..."
                 required
+                className="w-full"
               />
-            </Box>
-          </Flex>
+            </div>
+          </div>
 
-          <Flex gap="3">
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>Extension Config ID</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Extension Config ID</label>
               <input
-                style={inputStyle}
                 value={extensionConfigId}
                 onChange={(e) => setExtensionConfigId(e.target.value)}
                 placeholder="0x..."
                 required
+                className="w-full"
               />
-            </Box>
-            <Box style={{ flex: 1 }}>
-              <div style={labelStyle}>World Package ID</div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">World Package ID</label>
               <input
-                style={inputStyle}
                 value={worldPackageId}
                 onChange={(e) => setWorldPackageId(e.target.value)}
                 placeholder="0x..."
                 required
+                className="w-full"
               />
-            </Box>
-          </Flex>
+            </div>
+          </div>
 
           {error && (
-            <Text color="red" size="2">
-              {error}
-            </Text>
+            <p className="text-accent-red text-sm">{error}</p>
           )}
 
-          <button type="submit" disabled={submitting}>
-            {submitting ? "Posting..." : "Post Bounty"}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-cyan/10 border border-accent-cyan text-accent-cyan rounded hover:bg-accent-cyan/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Send className="w-3.5 h-3.5" />
+            {submitting ? "POSTING..." : "POST BOUNTY"}
           </button>
-        </Flex>
+        </div>
       </form>
-    </Box>
+    </div>
   );
 }

@@ -1,14 +1,19 @@
 # Move build artifacts
-move-contracts/bounty_board/build/
-move-contracts/bounty_board/Move.lock
+move-contracts/*/build/
+move-contracts/*/Move.lock
 
 # Sui Move dependency cache
 .move/
 
-# Node
+# Node / Bun
 node_modules/
-dapps/node_modules/
-dapps/dist/
+dist/
+
+# Rust
+sentinel-backend/target/
+
+# gRPC protos (cloned at build time)
+sentinel-backend/proto/sui-apis/
 
 # Environment
 .env

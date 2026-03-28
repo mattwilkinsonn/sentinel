@@ -1,17 +1,41 @@
-import { Box, Flex, Text } from "@radix-ui/themes";
+import { useState, useEffect } from "react";
 import { abbreviateAddress } from "@evefrontier/dapp-kit";
+import { Target, Clock, User, Users, ChevronDown, ChevronUp } from "lucide-react";
 import type { BountyData } from "./BountyBoard";
 
-function formatExpiry(expiresAtMs: string): string {
+function useCountdown(expiresAtMs: string) {
+  const [now, setNow] = useState(Date.now());
   const expires = Number(expiresAtMs);
+
+  useEffect(() => {
+    if (expires === 0 || expires < Date.now()) return;
+    const urgentThreshold = 5 * 60 * 1000; // 5 minutes
+    const diff = expires - Date.now();
+    const interval = diff < urgentThreshold ? 1000 : 60000;
+    const timer = setInterval(() => setNow(Date.now()), interval);
+    return () => clearInterval(timer);
+  }, [expires]);
+
   if (expires === 0) return "N/A";
-  const now = Date.now();
   const diff = expires - now;
-  if (diff <= 0) return "Expired";
-  const hours = Math.floor(diff / (1000 * 60 * 60));
+  if (diff <= 0) return "EXPIRED";
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-  return `${hours}h ${mins}m`;
+  const secs = Math.floor((diff % (1000 * 60)) / 1000);
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+}
+
+function getRewardTier(quantity: number): { label: string; className: string } {
+  if (quantity >= 100) return { label: "DIAMOND", className: "text-tier-diamond" };
+  if (quantity >= 50) return { label: "GOLD", className: "text-tier-gold" };
+  if (quantity >= 10) return { label: "SILVER", className: "text-tier-silver" };
+  return { label: "BRONZE", className: "text-tier-bronze" };
 }
 
 type BountyCardProps = {
@@ -22,111 +46,114 @@ type BountyCardProps = {
   onAction: () => void;
 };
 
-export function BountyCard({
-  bounty,
-  walletAddress,
-}: BountyCardProps) {
-  const isExpired = Number(bounty.expires_at) < Date.now() && !bounty.claimed;
+export function BountyCard({ bounty, walletAddress }: BountyCardProps) {
+  const [showContributors, setShowContributors] = useState(false);
+  const countdown = useCountdown(bounty.expires_at);
+  const isExpired = countdown === "EXPIRED" && !bounty.claimed;
   const isPoster = bounty.poster.toLowerCase() === walletAddress.toLowerCase();
+  const tier = getRewardTier(bounty.reward_quantity);
+
+  // Urgency: less than 2 hours
+  const expiresIn = Number(bounty.expires_at) - Date.now();
+  const isUrgent = !bounty.claimed && !isExpired && expiresIn < 2 * 60 * 60 * 1000 && expiresIn > 0;
+  const isHighValue = bounty.reward_quantity >= 50;
+  const hasMultipleContributors = bounty.contributors.length > 1;
+
+  let cardClass = "glass-card p-4 transition-all";
+  if (bounty.claimed) cardClass += " opacity-50";
+  else if (isExpired) cardClass += " opacity-40";
+  if (isUrgent) cardClass += " neon-glow-urgent";
+  else if (isHighValue && !bounty.claimed) cardClass += " neon-glow-gold";
 
   return (
-    <Box
-      style={{
-        padding: "16px",
-        border: `1px solid ${
-          bounty.claimed
-            ? "rgba(100, 200, 100, 0.3)"
-            : isExpired
-            ? "rgba(200, 100, 100, 0.3)"
-            : "var(--border)"
-        }`,
-        borderRadius: "8px",
-        opacity: bounty.claimed || isExpired ? 0.6 : 1,
-      }}
-    >
-      <Flex direction="row" justify="between" align="start">
-        <Box>
-          <Flex gap="2" align="center" style={{ marginBottom: "8px" }}>
-            <Text weight="bold" size="3">
-              Bounty #{bounty.id}
-            </Text>
+    <div className={cardClass}>
+      <div className="flex justify-between items-start gap-4">
+        {/* Left side */}
+        <div className="flex-1 min-w-0">
+          {/* Title + badges */}
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className="font-bold text-text-primary tracking-wide">
+              BOUNTY #{bounty.id}
+            </span>
             {bounty.claimed && (
-              <span
-                style={{
-                  background: "rgba(100, 200, 100, 0.2)",
-                  color: "#8f8",
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                  fontSize: "12px",
-                }}
-              >
-                CLAIMED
-              </span>
+              <span className="badge bg-accent-green/15 text-accent-green">CLAIMED</span>
             )}
             {isExpired && (
-              <span
-                style={{
-                  background: "rgba(200, 100, 100, 0.2)",
-                  color: "#f88",
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                  fontSize: "12px",
-                }}
-              >
-                EXPIRED
-              </span>
+              <span className="badge bg-accent-red/15 text-accent-red">EXPIRED</span>
             )}
             {isPoster && (
-              <span
-                style={{
-                  background: "rgba(100, 100, 200, 0.2)",
-                  color: "#88f",
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                  fontSize: "12px",
-                }}
-              >
-                YOUR BOUNTY
+              <span className="badge bg-accent-purple/15 text-accent-purple">YOUR BOUNTY</span>
+            )}
+            {hasMultipleContributors && (
+              <span className="badge bg-accent-cyan/15 text-accent-cyan">
+                <Users className="w-3 h-3 inline mr-1" />
+                {bounty.contributors.length} STACKED
               </span>
             )}
-          </Flex>
+          </div>
 
-          <Flex direction="column" gap="1">
-            <Text size="2" style={{ color: "var(--text-secondary)" }}>
-              Target: Character #{bounty.target_item_id} ({bounty.target_tenant})
-            </Text>
-            <Text size="2" style={{ color: "var(--text-secondary)" }}>
+          {/* Details */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 text-sm text-text-secondary">
+              <Target className="w-3.5 h-3.5 text-accent-red" />
+              Target: Character #{bounty.target_item_id}
+              <span className="text-text-muted">({bounty.target_tenant})</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-text-secondary">
+              <User className="w-3.5 h-3.5" />
               Posted by: {abbreviateAddress(bounty.poster)}
-            </Text>
+            </div>
             {bounty.claimed && bounty.claimed_by && (
-              <Text size="2" style={{ color: "#8f8" }}>
+              <div className="text-sm text-accent-green">
                 Claimed by: {abbreviateAddress(bounty.claimed_by)}
-              </Text>
+              </div>
             )}
-          </Flex>
-        </Box>
+          </div>
 
-        <Box style={{ textAlign: "right" }}>
-          <Text weight="bold" size="4" style={{ color: "#ffd700" }}>
-            {bounty.reward_quantity}x
-          </Text>
-          <Text size="2" style={{ color: "var(--text-secondary)", display: "block" }}>
-            Type #{bounty.reward_type_id}
-          </Text>
-          {!bounty.claimed && (
-            <Text
-              size="1"
-              style={{
-                color: isExpired ? "#f88" : "var(--text-secondary)",
-                display: "block",
-                marginTop: "4px",
-              }}
-            >
-              {formatExpiry(bounty.expires_at)}
-            </Text>
+          {/* Contributors expandable */}
+          {hasMultipleContributors && (
+            <div className="mt-2">
+              <button
+                onClick={() => setShowContributors(!showContributors)}
+                className="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary bg-transparent border-none p-0 cursor-pointer"
+              >
+                {showContributors ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                {showContributors ? "Hide" : "Show"} contributors
+              </button>
+              {showContributors && (
+                <div className="mt-1.5 pl-2 border-l border-border-default">
+                  {bounty.contributors.map((c, i) => (
+                    <div key={i} className="text-xs text-text-muted py-0.5">
+                      {abbreviateAddress(c.contributor)}: {c.amount}x
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-        </Box>
-      </Flex>
-    </Box>
+        </div>
+
+        {/* Right side: reward + timer */}
+        <div className="text-right shrink-0">
+          <div className={`text-2xl font-bold ${tier.className}`}>
+            {bounty.reward_quantity}x
+          </div>
+          <div className="text-xs text-text-muted">
+            Type #{bounty.reward_type_id}
+          </div>
+          <div className={`text-xs mt-0.5 ${tier.className}`}>
+            {tier.label}
+          </div>
+          {!bounty.claimed && (
+            <div className={`flex items-center justify-end gap-1 mt-2 text-xs ${
+              isExpired ? "text-accent-red" : isUrgent ? "text-accent-red" : "text-text-muted"
+            }`}>
+              <Clock className="w-3 h-3" />
+              {countdown}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
