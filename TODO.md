@@ -15,7 +15,9 @@ Deadline: March 31, 2026 23:59 UTC
       not in that window. May need to query by specific item_ids
       via CharacterCreatedEvent or paginate more aggressively.
       Some may be structure entities misidentified as characters.
-- [x] ~~Verify publisher succeeds~~ — published 78 profiles across
+- [x] ~~Verify publisher succeeds~~ — working. First restart after
+      adding published_score column re-publishes all (one-time).
+- [x] ~~Published score persistence~~ — published 78 profiles across
       InsufficientGas, now increased budget + smaller batches.
       Need to confirm `Published X threat scores — tx: <digest>`.
 - [ ] **Deploy to production** — using `sst.aws.StaticSite` with
