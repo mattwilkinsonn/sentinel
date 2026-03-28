@@ -17,6 +17,7 @@ export default $config({
     const db = new neon.Project("SentinelDb", {
       name: `sentinel-${$app.stage}`,
       orgId: process.env.NEON_ORG_ID!,
+      historyRetentionSeconds: 21600,
     });
 
     const dbBranch = new neon.Branch("SentinelDbBranch", {
