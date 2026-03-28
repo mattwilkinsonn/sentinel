@@ -10,7 +10,7 @@ export default $config({
         aws: {
           region: "us-east-1",
         },
-        neon: true,
+        neon: "0.13.0",
       },
     };
   },

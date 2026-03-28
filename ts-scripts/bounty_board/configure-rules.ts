@@ -1,6 +1,7 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: "../.env" });
 import { Transaction } from "@mysten/sui/transactions";
-import { getEnvConfig, handleError, hydrateWorldConfig, initializeContext } from "../utils/helper";
+import { getEnvConfig, handleError, initializeContext } from "../utils/helper";
 import { resolveBountyBoardExtensionIds } from "./extension-ids";
 import { MODULE } from "./modules";
 
@@ -11,7 +12,6 @@ async function main() {
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.adminExportedKey);
         const { client, keypair, address } = ctx;
-        await hydrateWorldConfig(ctx);
 
         const { builderPackageId, adminCapId, extensionConfigId } =
             await resolveBountyBoardExtensionIds(client, address);

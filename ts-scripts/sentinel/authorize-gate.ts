@@ -4,7 +4,6 @@ import { Transaction } from "@mysten/sui/transactions";
 import {
     getEnvConfig,
     handleError,
-    hydrateWorldConfig,
     initializeContext,
     requireEnv,
 } from "../utils/helper";
@@ -17,8 +16,7 @@ async function main() {
     try {
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.adminExportedKey);
-        const { client, keypair, address, worldConfig } = ctx;
-        await hydrateWorldConfig(ctx);
+        const { client, keypair, address } = ctx;
 
         const { sentinelPackageId } =
             await resolveSentinelExtensionIds(client, address);

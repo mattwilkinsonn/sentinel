@@ -1,14 +1,13 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: "../.env" });
 import { Transaction } from "@mysten/sui/transactions";
 import {
     getEnvConfig,
     handleError,
-    hydrateWorldConfig,
     initializeContext,
-    extractEvent,
     requireEnv,
 } from "../utils/helper";
-import { resolveBountyBoardExtensionIds } from "./extension-ids";
+import { requireBuilderPackageId } from "./extension-ids";
 import { MODULE } from "./modules";
 
 async function main() {
@@ -18,10 +17,22 @@ async function main() {
         const env = getEnvConfig();
         const ctx = initializeContext(env.network, env.adminExportedKey);
         const { client, keypair, address } = ctx;
-        await hydrateWorldConfig(ctx);
 
-        const { builderPackageId, adminCapId } =
-            await resolveBountyBoardExtensionIds(client, address);
+        // Only need builderPackageId + AdminCap — don't require BOUNTY_BOARD_ID
+        // (that's what we're creating here)
+        const builderPackageId = requireBuilderPackageId();
+        const adminCapType = `${builderPackageId}::${MODULE.CONFIG}::AdminCap`;
+        const result = await client.getOwnedObjects({
+            owner: address,
+            filter: { StructType: adminCapType },
+            limit: 1,
+        });
+        const adminCapId = result.data[0]?.data?.objectId;
+        if (!adminCapId) {
+            throw new Error(
+                `AdminCap not found for ${address}. Make sure this address published the bounty_board package.`
+            );
+        }
 
         const storageUnitId = requireEnv("STORAGE_UNIT_ID");
 

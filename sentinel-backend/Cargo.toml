@@ -46,6 +46,9 @@ rand = "0.9"
 # Config
 dotenvy = "0.15"
 
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "json", "chrono"] }
+
 [build-dependencies]
 tonic-build = "0.13"
 prost-build = "0.13"

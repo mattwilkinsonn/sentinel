@@ -22,6 +22,8 @@ pub struct AppConfig {
     pub publish_interval_ms: u64,
     /// HTTP API port
     pub api_port: u16,
+    /// Postgres connection string (optional — runs without DB if unset)
+    pub database_url: Option<String>,
 }
 
 impl AppConfig {
@@ -45,6 +47,7 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(3001),
+            database_url: env::var("DATABASE_URL").ok().filter(|s| !s.is_empty()),
         })
     }
 }

@@ -1,11 +1,11 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: "../.env" });
 import { Transaction } from "@mysten/sui/transactions";
 import { MODULES } from "../utils/config";
 import { CLOCK_OBJECT_ID, TENANT } from "../utils/constants";
 import {
     getEnvConfig,
     handleError,
-    hydrateWorldConfig,
     initializeContext,
     requireEnv,
 } from "../utils/helper";
@@ -37,7 +37,6 @@ async function main() {
         const playerKey = requireEnv("PLAYER_A_PRIVATE_KEY");
         const ctx = initializeContext(env.network, playerKey);
         const { client, keypair, config, address } = ctx;
-        await hydrateWorldConfig(ctx);
 
         const { builderPackageId, extensionConfigId, bountyBoardId } =
             resolveBountyBoardIdsFromEnv();
