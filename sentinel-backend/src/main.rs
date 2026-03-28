@@ -4,10 +4,12 @@ mod db;
 mod demo;
 mod google_rpc;
 mod grpc;
+mod historical;
 mod names;
 mod publisher;
 mod threat_engine;
 mod types;
+mod world_api;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -42,6 +44,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     }));
 
+    // World API client (for resolving system names + tribes)
+    let world_client = Arc::new(RwLock::new(
+        world_api::WorldApiClient::new(&config.world_api_url, &db_pool).await,
+    ));
+
     // Load persisted data
     {
         let mut s = state.write().await;
@@ -50,6 +57,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!("Resuming from checkpoint {cp}");
             s.last_checkpoint = Some(cp);
         }
+    }
+
+    // Load historical killmails from Sui GraphQL
+    if let Err(e) = historical::load_historical_killmails(&config, &state).await {
+        tracing::warn!("Historical killmail load failed: {e}");
+    }
+
+    // Sort events newest first after historical load
+    {
+        let mut s = state.write().await;
+        s.live
+            .recent_events
+            .make_contiguous()
+            .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
     }
 
     // Seed demo data
@@ -80,6 +101,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let names_config = config.clone();
     tokio::spawn(async move {
         names::name_resolver_loop(names_config, names_state).await;
+    });
+
+    // Metadata resolver (system names + tribe affiliations via World API)
+    let meta_state = state.clone();
+    let meta_client = world_client.clone();
+    let meta_pool = db_pool.clone();
+    tokio::spawn(async move {
+        world_api::metadata_resolver_loop(meta_client, meta_state, meta_pool).await;
     });
 
     // Database sync loop (persists dirty profiles + events)

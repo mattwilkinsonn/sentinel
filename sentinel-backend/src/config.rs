@@ -20,6 +20,10 @@ pub struct AppConfig {
     pub api_port: u16,
     /// Postgres connection string
     pub database_url: String,
+    /// World REST API base URL (Stillness)
+    pub world_api_url: String,
+    /// Sui GraphQL endpoint
+    pub sui_graphql_url: String,
 }
 
 impl AppConfig {
@@ -41,6 +45,10 @@ impl AppConfig {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(3001),
             database_url: env::var("DATABASE_URL").expect("DATABASE_URL is required"),
+            world_api_url: env::var("WORLD_API_URL")
+                .unwrap_or_else(|_| "https://world-api-stillness.live.tech.evefrontier.com".into()),
+            sui_graphql_url: env::var("SUI_GRAPHQL_URL")
+                .unwrap_or_else(|_| "https://graphql.testnet.sui.io/graphql".into()),
         })
     }
 }

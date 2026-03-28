@@ -12,6 +12,9 @@ pub struct ThreatProfile {
     pub bounty_count: u64,
     pub last_kill_timestamp: u64,
     pub last_seen_system: String,
+    pub last_seen_system_name: String,
+    pub tribe_id: String,
+    pub tribe_name: String,
     /// Kills in the last 24 hours (for recency scoring)
     pub recent_kills_24h: u64,
     /// Number of unique systems visited
@@ -45,6 +48,8 @@ pub struct DataStore {
     pub profiles: HashMap<u64, ThreatProfile>,
     pub recent_events: VecDeque<RawEvent>,
     pub name_cache: HashMap<u64, String>,
+    /// Solar system ID → name cache (populated by metadata resolver)
+    pub system_name_cache: HashMap<String, String>,
 }
 
 impl DataStore {
@@ -59,7 +64,7 @@ impl DataStore {
             }
         }
         self.recent_events.push_front(event);
-        if self.recent_events.len() > 200 {
+        if self.recent_events.len() > 500 {
             self.recent_events.pop_back();
         }
     }
@@ -145,10 +150,10 @@ mod tests {
     }
 
     #[test]
-    fn push_event_caps_at_200() {
+    fn push_event_caps_at_500() {
         let mut store = DataStore::default();
         let no_sse: Option<tokio::sync::broadcast::Sender<String>> = None;
-        for i in 0..250 {
+        for i in 0..600 {
             store.push_event(
                 RawEvent {
                     event_type: "kill".into(),
@@ -158,8 +163,8 @@ mod tests {
                 &no_sse,
             );
         }
-        assert_eq!(store.recent_events.len(), 200);
-        assert_eq!(store.recent_events[0].timestamp_ms, 249);
+        assert_eq!(store.recent_events.len(), 500);
+        assert_eq!(store.recent_events[0].timestamp_ms, 599);
     }
 
     #[test]

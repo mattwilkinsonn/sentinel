@@ -14,6 +14,9 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
     sqlx::raw_sql(include_str!("../migrations/001_init.sql"))
         .execute(&pool)
         .await?;
+    sqlx::raw_sql(include_str!("../migrations/002_world_metadata.sql"))
+        .execute(&pool)
+        .await?;
 
     tracing::info!("Database connected and migrations applied");
     Ok(pool)
@@ -25,7 +28,8 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
     let rows = sqlx::query_as::<_, ProfileRow>(
         "SELECT character_item_id, name, threat_score, kill_count, death_count, \
          bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-         systems_visited FROM threat_profiles",
+         systems_visited, tribe_id, tribe_name, last_seen_system_name \
+         FROM threat_profiles",
     )
     .fetch_all(pool)
     .await?;
@@ -42,6 +46,9 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
                 bounty_count: r.bounty_count as u64,
                 last_kill_timestamp: r.last_kill_timestamp as u64,
                 last_seen_system: r.last_seen_system,
+                last_seen_system_name: r.last_seen_system_name,
+                tribe_id: r.tribe_id,
+                tribe_name: r.tribe_name,
                 recent_kills_24h: r.recent_kills_24h as u64,
                 systems_visited: r.systems_visited as u64,
                 dirty: false,
@@ -88,8 +95,8 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
         "INSERT INTO threat_profiles \
          (character_item_id, name, threat_score, kill_count, death_count, \
           bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-          systems_visited, updated_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW()) \
+          systems_visited, tribe_id, tribe_name, last_seen_system_name, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW()) \
          ON CONFLICT (character_item_id) DO UPDATE SET \
           name = EXCLUDED.name, \
           threat_score = EXCLUDED.threat_score, \
@@ -100,6 +107,9 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
           last_seen_system = EXCLUDED.last_seen_system, \
           recent_kills_24h = EXCLUDED.recent_kills_24h, \
           systems_visited = EXCLUDED.systems_visited, \
+          tribe_id = EXCLUDED.tribe_id, \
+          tribe_name = EXCLUDED.tribe_name, \
+          last_seen_system_name = EXCLUDED.last_seen_system_name, \
           updated_at = NOW()",
     )
     .bind(p.character_item_id as i64)
@@ -112,6 +122,9 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
     .bind(&p.last_seen_system)
     .bind(p.recent_kills_24h as i64)
     .bind(p.systems_visited as i64)
+    .bind(&p.tribe_id)
+    .bind(&p.tribe_name)
+    .bind(&p.last_seen_system_name)
     .execute(pool)
     .await?;
     Ok(())
@@ -162,6 +175,9 @@ struct ProfileRow {
     bounty_count: i64,
     last_kill_timestamp: i64,
     last_seen_system: String,
+    last_seen_system_name: String,
+    tribe_id: String,
+    tribe_name: String,
     recent_kills_24h: i64,
     systems_visited: i64,
 }

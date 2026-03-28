@@ -55,7 +55,7 @@ async fn upsert_and_load_profile() {
         last_seen_system: "J-1042".into(),
         recent_kills_24h: 4,
         systems_visited: 6,
-        dirty: false,
+        ..Default::default()
     };
 
     sentinel_backend::db::upsert_profile(&pool, &profile)

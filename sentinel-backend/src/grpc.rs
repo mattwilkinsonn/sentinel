@@ -52,6 +52,12 @@ async fn run_stream(
     let mut stream = client.subscribe_checkpoints(request).await?.into_inner();
 
     tracing::info!("gRPC checkpoint stream connected");
+    tracing::info!(
+        "Filtering for packages: world={}, bounty={}, sentinel={}",
+        config.world_package_id,
+        config.bounty_board_package_id,
+        config.sentinel_package_id
+    );
 
     let mut checkpoint_count: u64 = 0;
     while let Some(response) = stream.message().await? {
@@ -82,6 +88,8 @@ async fn process_checkpoint(
     checkpoint: &sui_rpc::Checkpoint,
     cursor: u64,
 ) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SAMPLE_COUNT: AtomicU64 = AtomicU64::new(0);
     let timestamp_ms: u64 = checkpoint
         .summary
         .as_ref()
@@ -100,11 +108,24 @@ async fn process_checkpoint(
             let event_type = event.event_type.as_deref().unwrap_or("");
             let package_id = event.package_id.as_deref().unwrap_or("");
 
+            // Sample first 20 events for debugging package IDs
+            let sample = SAMPLE_COUNT.load(Ordering::Relaxed);
+            if sample < 20 {
+                SAMPLE_COUNT.fetch_add(1, Ordering::Relaxed);
+                tracing::info!("Event sample #{sample}: type={event_type} pkg={package_id}");
+            }
+
             // Filter for events from world or bounty_board packages
             if package_id != config.world_package_id
                 && package_id != config.bounty_board_package_id
                 && package_id != config.sentinel_package_id
             {
+                if event_type.contains("Kill") || event_type.contains("kill") {
+                    tracing::info!(
+                        "Skipped kill-like event: type={event_type} pkg={package_id} (want={})",
+                        config.world_package_id
+                    );
+                }
                 continue;
             }
 
@@ -145,12 +166,17 @@ fn handle_killmail(
     json: &serde_json::Value,
     timestamp_ms: u64,
 ) {
-    // Extract killer and victim character IDs from the killmail event
-    let killer_id = json_u64(json, "killer_character_id").or_else(|| json_u64(json, "killerId"));
-    let victim_id = json_u64(json, "victim_character_id").or_else(|| json_u64(json, "victimId"));
-    let system = json_str(json, "solar_system_id")
+    // Extract killer and victim character IDs (nested: {"item_id": "123", "tenant": "..."})
+    let killer_id = json_item_id(json, "killer_id")
+        .or_else(|| json_item_id(json, "killer_character_id"))
+        .or_else(|| json_u64(json, "killerId"));
+    let victim_id = json_item_id(json, "victim_id")
+        .or_else(|| json_item_id(json, "victim_character_id"))
+        .or_else(|| json_u64(json, "victimId"));
+    let system = json_item_id_str(json, "solar_system_id")
         .or_else(|| json_str(json, "solarSystemId"))
         .unwrap_or_default();
+    let system_name = resolve_system_name(state, &system);
 
     if let Some(killer) = killer_id {
         let name = resolve_name(state, killer);
@@ -166,6 +192,7 @@ fn handle_killmail(
         profile.recent_kills_24h += 1;
         profile.last_kill_timestamp = timestamp_ms;
         profile.last_seen_system = system.clone();
+        profile.last_seen_system_name = system_name.clone();
         profile.dirty = true;
         profile.threat_score = threat_engine::compute_score(profile);
     }
@@ -182,6 +209,7 @@ fn handle_killmail(
             });
         profile.death_count += 1;
         profile.last_seen_system = system.clone();
+        profile.last_seen_system_name = system_name.clone();
         profile.dirty = true;
         profile.threat_score = threat_engine::compute_score(profile);
     }
@@ -190,7 +218,11 @@ fn handle_killmail(
         RawEvent {
             event_type: "kill".into(),
             timestamp_ms,
-            data: json.clone(),
+            data: serde_json::json!({
+                "killer_character_id": killer_id,
+                "target_item_id": victim_id,
+                "solar_system_id": system,
+            }),
         },
         sse_tx,
     );
@@ -202,7 +234,7 @@ fn handle_bounty_posted(
     json: &serde_json::Value,
     timestamp_ms: u64,
 ) {
-    let target_id = json_u64(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
+    let target_id = json_item_id(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
 
     if let Some(target) = target_id {
         let name = resolve_name(state, target);
@@ -223,7 +255,10 @@ fn handle_bounty_posted(
         RawEvent {
             event_type: "bounty_posted".into(),
             timestamp_ms,
-            data: json.clone(),
+            data: serde_json::json!({
+                "target_item_id": target_id,
+                "poster_id": json_item_id(json, "poster_id"),
+            }),
         },
         sse_tx,
     );
@@ -235,7 +270,7 @@ fn handle_bounty_removed(
     json: &serde_json::Value,
     timestamp_ms: u64,
 ) {
-    let target_id = json_u64(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
+    let target_id = json_item_id(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
 
     if let Some(target) = target_id {
         if let Some(profile) = state.profiles.get_mut(&target) {
@@ -249,7 +284,9 @@ fn handle_bounty_removed(
         RawEvent {
             event_type: "bounty_removed".into(),
             timestamp_ms,
-            data: json.clone(),
+            data: serde_json::json!({
+                "target_item_id": target_id,
+            }),
         },
         sse_tx,
     );
@@ -261,10 +298,12 @@ fn handle_jump(
     json: &serde_json::Value,
     timestamp_ms: u64,
 ) {
-    let character_id = json_u64(json, "character_id").or_else(|| json_u64(json, "characterId"));
-    let system = json_str(json, "solar_system_id")
+    let character_id = json_item_id(json, "character_id").or_else(|| json_u64(json, "characterId"));
+    let system = json_item_id_str(json, "solar_system_id")
         .or_else(|| json_str(json, "solarSystemId"))
         .unwrap_or_default();
+    let system_for_event = system.clone();
+    let system_name = resolve_system_name(state, &system);
 
     if let Some(char_id) = character_id {
         let name = resolve_name(state, char_id);
@@ -278,6 +317,7 @@ fn handle_jump(
             });
         if profile.last_seen_system != system {
             profile.systems_visited += 1;
+            profile.last_seen_system_name = system_name;
             profile.last_seen_system = system;
         }
         profile.dirty = true;
@@ -288,7 +328,10 @@ fn handle_jump(
         RawEvent {
             event_type: "jump".into(),
             timestamp_ms,
-            data: json.clone(),
+            data: serde_json::json!({
+                "character_id": character_id,
+                "solar_system_id": system_for_event,
+            }),
         },
         sse_tx,
     );
@@ -303,12 +346,48 @@ fn resolve_name(state: &crate::types::DataStore, character_item_id: u64) -> Stri
         .unwrap_or_else(|| format!("Pilot #{character_item_id}"))
 }
 
+/// Look up a cached system name from the inline DataStore cache.
+fn resolve_system_name(state: &crate::types::DataStore, system_id: &str) -> String {
+    state
+        .system_name_cache
+        .get(system_id)
+        .cloned()
+        .unwrap_or_default()
+}
+
 // === JSON helpers ===
 
 fn json_u64(v: &serde_json::Value, key: &str) -> Option<u64> {
     v.get(key).and_then(|v| {
         v.as_u64()
             .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    })
+}
+
+/// Extract a u64 from a nested EVE Frontier key object: {"item_id": "123", "tenant": "..."}
+fn json_item_id(v: &serde_json::Value, key: &str) -> Option<u64> {
+    v.get(key).and_then(|val| {
+        // Nested: {"item_id": "123"}
+        val.get("item_id")
+            .and_then(|id| {
+                id.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| id.as_u64())
+            })
+            // Fallback: plain value
+            .or_else(|| val.as_u64())
+            .or_else(|| val.as_str().and_then(|s| s.parse().ok()))
+    })
+}
+
+/// Extract a string item_id from a nested key object.
+fn json_item_id_str(v: &serde_json::Value, key: &str) -> Option<String> {
+    v.get(key).and_then(|val| {
+        // Nested: {"item_id": "30016543"}
+        val.get("item_id")
+            .and_then(|id| id.as_str().map(|s| s.to_string()))
+            // Fallback: plain string
+            .or_else(|| val.as_str().map(|s| s.to_string()))
     })
 }
 
