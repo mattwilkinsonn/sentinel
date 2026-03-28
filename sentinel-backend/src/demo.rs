@@ -311,6 +311,7 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
 pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
     tracing::info!("Demo event stream started");
     let mut rng = StdRng::from_os_rng();
+    let mut last_event_type = "";
 
     loop {
         // Random delay 5-12 seconds
@@ -496,6 +497,12 @@ pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
                 }),
             )
         };
+
+        // Skip consecutive duplicate event types
+        if event_type == last_event_type {
+            continue;
+        }
+        last_event_type = event_type;
 
         // Apply event to state
         let mut s = state.write().await;

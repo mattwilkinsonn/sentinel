@@ -1,5 +1,5 @@
-import { MapPin } from "lucide-solid";
-import { For } from "solid-js";
+import { MapPin, Skull, Users } from "lucide-solid";
+import { createSignal, For, Show } from "solid-js";
 import { LoadingState } from "../LoadingState";
 import type { ThreatProfile } from "../types";
 import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
@@ -10,39 +10,49 @@ type SystemsViewProps = {
 };
 
 type SystemInfo = {
-  name: string;
+  id: string;
+  displayName: string;
   characterCount: number;
   totalThreat: number;
   avgThreat: number;
+  totalKills: number;
   topKiller: ThreatProfile | null;
+  profiles: ThreatProfile[];
 };
 
 export function SystemsView(props: SystemsViewProps) {
+  const [expanded, setExpanded] = createSignal<string | null>(null);
+
   const systems = () => {
-    const map = new Map<string, { profiles: ThreatProfile[] }>();
+    const map = new Map<string, ThreatProfile[]>();
 
     for (const p of props.profiles) {
       if (!p.last_seen_system) continue;
       const existing = map.get(p.last_seen_system);
       if (existing) {
-        existing.profiles.push(p);
+        existing.push(p);
       } else {
-        map.set(p.last_seen_system, { profiles: [p] });
+        map.set(p.last_seen_system, [p]);
       }
     }
 
     const result: SystemInfo[] = [];
-    for (const [name, data] of map) {
-      const totalThreat = data.profiles.reduce((s, p) => s + p.threat_score, 0);
-      const sorted = [...data.profiles].sort(
-        (a, b) => b.kill_count - a.kill_count,
-      );
+    for (const [id, profiles] of map) {
+      const totalThreat = profiles.reduce((s, p) => s + p.threat_score, 0);
+      const totalKills = profiles.reduce((s, p) => s + p.kill_count, 0);
+      const sorted = [...profiles].sort((a, b) => b.kill_count - a.kill_count);
+      const displayName =
+        profiles.find((p) => p.last_seen_system_name)?.last_seen_system_name ||
+        id;
       result.push({
-        name,
-        characterCount: data.profiles.length,
+        id,
+        displayName,
+        characterCount: profiles.length,
         totalThreat,
-        avgThreat: Math.round(totalThreat / data.profiles.length),
+        avgThreat: Math.round(totalThreat / profiles.length),
+        totalKills,
         topKiller: sorted[0] ?? null,
+        profiles: sorted,
       });
     }
 
@@ -68,46 +78,80 @@ export function SystemsView(props: SystemsViewProps) {
       <div class="flex flex-col gap-3">
         <For each={systems()}>
           {(system) => {
-            const avgTier = () => getThreatTier(system.avgThreat);
-            const color = () => getThreatColor(avgTier());
-            const colorClass = () => getThreatColorClass(avgTier());
+            const tier = () => getThreatTier(system.totalThreat);
+            const color = () => getThreatColor(tier());
+            const colorClass = () => getThreatColorClass(tier());
+            const isExpanded = () => expanded() === system.id;
 
             return (
-              <div
-                class="glass-card p-4"
+              <button
+                type="button"
+                class="glass-card p-4 w-full text-left bg-transparent cursor-pointer transition-all"
                 style={{ "border-left": `3px solid ${color()}` }}
+                onClick={() => setExpanded(isExpanded() ? null : system.id)}
               >
                 <div class="flex items-center justify-between mb-2">
                   <div class="flex items-center gap-2">
                     <MapPin size={16} class={colorClass()} />
-                    <h4 class="text-base tracking-wider">{system.name}</h4>
-                    <span
-                      class={`badge ${colorClass()}`}
-                      style={{ background: `${color()}15` }}
-                    >
-                      {avgTier()}
-                    </span>
+                    <h4 class="text-base tracking-wider">
+                      {system.displayName}
+                    </h4>
                   </div>
                   <span class={`text-lg font-bold ${colorClass()}`}>
-                    {(system.avgThreat / 100).toFixed(2)} avg
+                    {(system.totalThreat / 100).toFixed(0)}
                   </span>
                 </div>
 
                 <div class="flex gap-4 text-xs text-text-muted">
-                  <span>{system.characterCount} characters</span>
-                  <span>
-                    Total threat: {(system.totalThreat / 100).toFixed(0)}
+                  <span class="flex items-center gap-1">
+                    <Users size={12} />
+                    {system.characterCount} pilots
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <Skull size={12} />
+                    {system.totalKills} kills
                   </span>
                   {system.topKiller && (
                     <span>
-                      Top killer:{" "}
+                      Top threat:{" "}
                       {system.topKiller.name ||
-                        `Pilot #${system.topKiller.character_item_id}`}{" "}
-                      ({system.topKiller.kill_count}K)
+                        `Pilot #${system.topKiller.character_item_id}`}
                     </span>
                   )}
                 </div>
-              </div>
+
+                <Show when={isExpanded()}>
+                  <div class="mt-3 pt-3 border-t border-border-default">
+                    <div class="flex flex-col gap-2">
+                      <For each={system.profiles.slice(0, 10)}>
+                        {(p) => {
+                          const pTier = () => getThreatTier(p.threat_score);
+                          const pColor = () => getThreatColorClass(pTier());
+                          return (
+                            <div class="flex items-center gap-3 text-sm">
+                              <div
+                                class="w-2 h-2 rounded-full shrink-0"
+                                style={{
+                                  background: getThreatColor(pTier()),
+                                }}
+                              />
+                              <span class="flex-1">
+                                {p.name || `Pilot #${p.character_item_id}`}
+                              </span>
+                              <span class={`font-bold ${pColor()}`}>
+                                {(p.threat_score / 100).toFixed(2)}
+                              </span>
+                              <span class="text-text-muted text-xs">
+                                {p.kill_count} K / {p.death_count} D
+                              </span>
+                            </div>
+                          );
+                        }}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+              </button>
             );
           }}
         </For>

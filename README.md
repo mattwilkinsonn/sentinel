@@ -146,7 +146,8 @@ sentinel/
 
 ## Threat Scoring
 
-Scores range from 0-10,000 basis points across five factors:
+Scores range from 0-100.00 (stored internally as 0-10,000
+basis points, displayed divided by 100) across five factors:
 
 | Factor           | Max    | Formula              |
 | ---------------- | ------ | -------------------- |
@@ -156,8 +157,8 @@ Scores range from 0-10,000 basis points across five factors:
 | Bounties         | 1,500  | bounty_count * 500   |
 | Movement         | 500    | systems_visited * 100|
 
-Threat tiers: LOW (0-2500), MODERATE (2501-5000),
-HIGH (5001-7500), CRITICAL (7501+).
+Threat tiers: LOW (0-25), MODERATE (25.01-50),
+HIGH (50.01-75), CRITICAL (75.01+).
 
 ## Deployment
 

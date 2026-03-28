@@ -4,7 +4,7 @@
 /// computes per-player threat scores, and publishes them here via `batch_update`.
 /// Smart gates read scores to autonomously block high-threat players.
 ///
-/// Scores are 0-10000 (basis points): 5000 = 50.00% threat.
+/// Scores are 0-10000 (basis points), displayed as 0-100.00: e.g. 5000 = 50.00.
 #[allow(unused_const)]
 module sentinel::threat_registry {
     use sentinel::config::AdminCap;

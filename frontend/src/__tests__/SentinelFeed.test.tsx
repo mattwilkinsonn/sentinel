@@ -127,9 +127,9 @@ describe("SentinelFeed", () => {
     }));
 
     render(() => <SentinelFeed events={events} profiles={[]} />);
-    // Sidebar caps at 15 items
+    // Sidebar caps at 50 items
     const items = screen.getAllByText(/killed/);
-    expect(items.length).toBe(15);
+    expect(items.length).toBe(50);
   });
 
   it("shows relative timestamps", () => {

@@ -1,10 +1,11 @@
 import { Activity, MapPin, Radio, Shield, Skull } from "lucide-solid";
 import type { SubView } from "./SentinelDashboard";
 import { Tooltip } from "./Tooltip";
-import type { AggregateStats } from "./types";
+import type { AggregateStats, ThreatProfile } from "./types";
 
 type StatsBarProps = {
   stats: AggregateStats;
+  profiles: ThreatProfile[];
   activeView: SubView;
   onStatClick: (view: SubView) => void;
 };
@@ -21,13 +22,15 @@ export function StatsBar(props: StatsBarProps) {
         "Events processed in the last 60 seconds. Click to view the live intel feed.",
     },
     {
-      label: "AVG THREAT",
-      value: (props.stats.avg_score / 100).toFixed(2),
+      label: "ACTIVE THREATS",
+      value: props.profiles
+        .filter((p) => p.threat_score > 2500)
+        .length.toString(),
       icon: Activity,
       color: "text-accent-gold",
       view: "leaderboard" as SubView,
       tooltip:
-        "Average threat score across all tracked pilots (0-100). Click to view the threat leaderboard.",
+        "Pilots with threat score above MODERATE (25+). Click to view the threat leaderboard.",
     },
     {
       label: "TRACKED",

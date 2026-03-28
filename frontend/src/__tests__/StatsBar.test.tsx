@@ -1,6 +1,7 @@
 import { render, screen } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { StatsBar } from "../StatsBar";
+import type { ThreatProfile } from "../types";
 
 describe("StatsBar", () => {
   const mockStats = {
@@ -11,17 +12,38 @@ describe("StatsBar", () => {
     events_per_min: 7,
   };
 
+  const mockProfiles: ThreatProfile[] = [
+    {
+      character_item_id: 1,
+      name: "Test",
+      threat_score: 8500,
+      kill_count: 10,
+      death_count: 2,
+      bounty_count: 0,
+      last_kill_timestamp: 0,
+      last_seen_system: "",
+      last_seen_system_name: "",
+      tribe_id: "",
+      tribe_name: "",
+      titles: [],
+      threat_tier: "CRITICAL",
+      recent_kills_24h: 3,
+      systems_visited: 1,
+    },
+  ];
+
   it("renders all five stat cards", () => {
     render(() => (
       <StatsBar
         stats={mockStats}
+        profiles={mockProfiles}
         activeView="leaderboard"
         onStatClick={() => {}}
       />
     ));
 
     expect(screen.getByText("TRACKED")).toBeTruthy();
-    expect(screen.getByText("AVG THREAT")).toBeTruthy();
+    expect(screen.getByText("ACTIVE THREATS")).toBeTruthy();
     expect(screen.getByText("EVENTS/MIN")).toBeTruthy();
     expect(screen.getByText("KILLS 24H")).toBeTruthy();
     expect(screen.getByText("TOP SYSTEM")).toBeTruthy();
@@ -31,13 +53,15 @@ describe("StatsBar", () => {
     render(() => (
       <StatsBar
         stats={mockStats}
+        profiles={mockProfiles}
         activeView="leaderboard"
         onStatClick={() => {}}
       />
     ));
 
     expect(screen.getByText("42")).toBeTruthy();
-    expect(screen.getByText("65.00")).toBeTruthy();
+    // 1 profile with score 8500 > 2500 threshold
+    expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("18")).toBeTruthy();
     expect(screen.getByText("J-1042")).toBeTruthy();
   });
@@ -46,6 +70,7 @@ describe("StatsBar", () => {
     render(() => (
       <StatsBar
         stats={{ ...mockStats, top_system: "", events_per_min: 0 }}
+        profiles={[]}
         activeView="leaderboard"
         onStatClick={() => {}}
       />
@@ -59,6 +84,7 @@ describe("StatsBar", () => {
     render(() => (
       <StatsBar
         stats={mockStats}
+        profiles={mockProfiles}
         activeView="leaderboard"
         onStatClick={onClick}
       />

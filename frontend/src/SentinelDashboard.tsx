@@ -92,6 +92,7 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
       {/* Stats bar */}
       <StatsBar
         stats={stats()}
+        profiles={profiles()}
         activeView={subView()}
         onStatClick={handleStatClick}
       />
@@ -151,12 +152,8 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
         <Show when={subView() !== "feed"}>
           <button
             type="button"
-            class="w-80 shrink-0 hidden lg:block overflow-hidden cursor-pointer bg-transparent border-none p-0 text-left"
-            style={
-              subView() !== "feed" && profiles().length > 0
-                ? "margin-top:2.5rem"
-                : ""
-            }
+            class="w-80 shrink-0 hidden lg:block overflow-hidden cursor-pointer bg-transparent border-none p-0 text-left sticky top-4"
+            style="max-height:calc(100vh - 2rem)"
             onClick={() => handleStatClick("feed")}
           >
             <SentinelFeed

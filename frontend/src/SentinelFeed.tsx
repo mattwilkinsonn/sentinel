@@ -132,16 +132,16 @@ export function SentinelFeed(props: SentinelFeedProps) {
   };
 
   return (
-    <div class="glass-card p-4">
+    <div class="glass-card p-4 h-full flex flex-col overflow-hidden">
       <h4
-        class="text-sm tracking-wider flex items-center gap-2 text-text-secondary"
+        class="text-sm tracking-wider flex items-center gap-2 text-text-secondary shrink-0"
         style="margin-bottom:1.25rem"
       >
         <div class="live-dot" />
         LIVE INTEL
       </h4>
-      <div class="flex flex-col gap-1">
-        <For each={props.events.slice(0, 15)}>
+      <div class="flex flex-col gap-1 overflow-y-auto flex-1 min-h-0">
+        <For each={props.events.slice(0, 50)}>
           {(event) => {
             const config = () =>
               eventConfig[event.event_type] ?? eventConfig.kill;

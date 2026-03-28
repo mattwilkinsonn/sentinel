@@ -155,6 +155,14 @@ pub async fn load_historical_killmails(
     let mut cursor: Option<String> = None;
     let mut total = 0;
 
+    // Track existing profiles so we don't double-count stats from DB
+    let existing_profiles: std::collections::HashSet<u64> = {
+        let s = state.read().await;
+        s.live.profiles.keys().copied().collect()
+    };
+    // Track seen killmail object IDs to deduplicate
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     loop {
         let after_clause = cursor
             .as_ref()
@@ -219,13 +227,27 @@ pub async fn load_historical_killmails(
             };
             let system = extract_item_id_str(&contents["solar_system_id"]);
 
+            // Deduplicate by killmail object ID
+            let killmail_id = contents["id"]
+                .as_str()
+                .or_else(|| contents["key"]["item_id"].as_str())
+                .unwrap_or("")
+                .to_string();
+            if killmail_id.is_empty() || !seen_ids.insert(killmail_id) {
+                continue;
+            }
+
+            // Only update stats for profiles NOT already loaded from DB
             if let Some(kid) = killer_id {
+                let is_new = !existing_profiles.contains(&kid);
                 let profile = s.live.profiles.entry(kid).or_insert_with(|| ThreatProfile {
                     character_item_id: kid,
                     name: format!("Pilot #{kid}"),
                     ..Default::default()
                 });
-                profile.kill_count += 1;
+                if is_new {
+                    profile.kill_count += 1;
+                }
                 profile.last_kill_timestamp = profile.last_kill_timestamp.max(timestamp);
                 if !system.is_empty() {
                     profile.last_seen_system = system.clone();
@@ -234,12 +256,15 @@ pub async fn load_historical_killmails(
             }
 
             if let Some(vid) = victim_id {
+                let is_new = !existing_profiles.contains(&vid);
                 let profile = s.live.profiles.entry(vid).or_insert_with(|| ThreatProfile {
                     character_item_id: vid,
                     name: format!("Pilot #{vid}"),
                     ..Default::default()
                 });
-                profile.death_count += 1;
+                if is_new {
+                    profile.death_count += 1;
+                }
                 if !system.is_empty() {
                     profile.last_seen_system = system.clone();
                 }
@@ -257,7 +282,7 @@ pub async fn load_historical_killmails(
                         "solar_system_id": system,
                     }),
                 },
-                &None, // Don't broadcast historical events via SSE
+                &None,
             );
 
             total += 1;
