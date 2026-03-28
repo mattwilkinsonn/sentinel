@@ -46,6 +46,11 @@ rand = "0.9"
 # Config
 dotenvy = "0.15"
 
+# Encoding
+base64 = "0.22"
+bech32 = "0.11"
+blake2b_simd = "1"
+
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "json", "chrono"] }
 

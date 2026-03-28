@@ -20,10 +20,17 @@ export default $config({
       historyRetentionSeconds: 21600,
     });
 
-    const dbBranch = new neon.Branch("SentinelDbBranch", {
-      projectId: db.id,
-      name: "main",
-    });
+    let dbBranch: neon.Branch;
+
+    try {
+      dbBranch = neon.Branch.get("SentinelDbBranch", db.id, { name: "main" });
+    } catch (error) {
+      console.log("Branch 'main' not found, creating a new one...");
+      dbBranch = new neon.Branch("SentinelDbBranch", {
+        projectId: db.id,
+        name: "main",
+      });
+    }
 
     const dbEndpoint = new neon.Endpoint("SentinelDbEndpoint", {
       projectId: db.id,
