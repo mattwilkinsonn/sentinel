@@ -17,6 +17,7 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 use tower_http::cors::CorsLayer;
 
+use crate::threat_engine;
 use crate::types::AppState;
 
 type SharedState = Arc<RwLock<AppState>>;
@@ -40,13 +41,25 @@ struct AppRouterState {
 async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoResponse {
     let state = app.state.read().await;
 
-    let mut demo_profiles: Vec<_> = state.demo.profiles.values().cloned().collect();
-    demo_profiles.sort_by(|a, b| b.threat_score.cmp(&a.threat_score));
-    let demo_events: Vec<_> = state.demo.recent_events.iter().take(200).cloned().collect();
+    let enrich = |profiles: &std::collections::HashMap<u64, crate::types::ThreatProfile>| {
+        let mut enriched: Vec<serde_json::Value> = profiles
+            .values()
+            .map(|p| {
+                let mut v = serde_json::to_value(p).unwrap_or_default();
+                v["titles"] = serde_json::json!(threat_engine::earned_titles(p));
+                v["threat_tier"] = serde_json::json!(threat_engine::threat_tier(p.threat_score));
+                v
+            })
+            .collect();
+        enriched.sort_by(|a, b| b["threat_score"].as_u64().cmp(&a["threat_score"].as_u64()));
+        enriched
+    };
 
-    let mut live_profiles: Vec<_> = state.live.profiles.values().cloned().collect();
-    live_profiles.sort_by(|a, b| b.threat_score.cmp(&a.threat_score));
-    let live_events: Vec<_> = state.live.recent_events.iter().take(200).cloned().collect();
+    let demo_profiles = enrich(&state.demo.profiles);
+    let demo_events: Vec<_> = state.demo.recent_events.iter().take(500).cloned().collect();
+
+    let live_profiles = enrich(&state.live.profiles);
+    let live_events: Vec<_> = state.live.recent_events.iter().take(500).cloned().collect();
 
     Json(serde_json::json!({
         "demo": {

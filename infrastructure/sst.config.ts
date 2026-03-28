@@ -16,6 +16,7 @@ export default $config({
     // Postgres database (Neon serverless)
     const db = new neon.Project("SentinelDb", {
       name: `sentinel-${$app.stage}`,
+      orgId: process.env.NEON_ORG_ID!,
     });
 
     const dbBranch = new neon.Branch("SentinelDbBranch", {
