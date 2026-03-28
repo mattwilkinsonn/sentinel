@@ -16,12 +16,20 @@ mod common {
         sqlx::raw_sql(include_str!("../migrations/001_init.sql"))
             .execute(pool)
             .await
-            .expect("migrations failed");
+            .expect("migration 001 failed");
 
-        sqlx::raw_sql("TRUNCATE threat_profiles, raw_events, checkpoint_cursor")
+        sqlx::raw_sql(include_str!("../migrations/002_world_metadata.sql"))
             .execute(pool)
             .await
-            .expect("truncate failed");
+            .expect("migration 002 failed");
+
+        sqlx::raw_sql(
+            "TRUNCATE threat_profiles, raw_events, checkpoint_cursor, \
+             solar_system_cache, tribe_cache",
+        )
+        .execute(pool)
+        .await
+        .expect("truncate failed");
     }
 }
 
