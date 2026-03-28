@@ -9,7 +9,7 @@ use crate::threat_engine;
 use crate::types::{AppState, RawEvent, ThreatProfile};
 
 /// Load all historical data in sequence, then sort events.
-pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>) {
+pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>, pool: sqlx::PgPool) {
     macro_rules! load {
         ($fn:expr, $name:expr) => {
             if let Err(e) = $fn.await {
@@ -24,7 +24,10 @@ pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>) {
     );
     load!(load_character_events(&config, &state), "Character events");
     load!(load_jump_events(&config, &state), "Jump events");
-    load!(load_character_names(&config, &state), "Character names");
+    load!(
+        load_character_names(&config, &state, &pool),
+        "Character names"
+    );
 
     // Sort events newest first
     let mut s = state.write().await;
@@ -36,6 +39,29 @@ pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>) {
         .new_pilot_events
         .make_contiguous()
         .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
+
+    // Recompute recent_kills_24h from actual events
+    let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+    let day_ago = now_ms.saturating_sub(86_400_000);
+
+    // Collect 24h kill counts from events
+    let mut kill_counts_24h: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+    for e in &s.live.recent_events {
+        if e.event_type == "kill" && e.timestamp_ms >= day_ago {
+            if let Some(kid) = e.data.get("killer_character_id").and_then(|v| v.as_u64()) {
+                *kill_counts_24h.entry(kid).or_default() += 1;
+            }
+        }
+    }
+    // Apply counts and recompute scores
+    for p in s.live.profiles.values_mut() {
+        p.recent_kills_24h = kill_counts_24h
+            .get(&p.character_item_id)
+            .copied()
+            .unwrap_or(0);
+        p.threat_score = crate::threat_engine::compute_score(p);
+    }
+
     tracing::info!("Historical data load complete");
 }
 
@@ -67,6 +93,7 @@ fn extract_item_id_str(v: &serde_json::Value) -> String {
 pub async fn load_character_names(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
+    pool: &sqlx::PgPool,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let character_type = format!("{}::character::Character", config.world_package_id);
     tracing::info!("Loading character names (type: {character_type})");
@@ -139,6 +166,8 @@ pub async fn load_character_names(
             if let Some(id) = item_id {
                 if !name.is_empty() {
                     s.live.name_cache.insert(id, name.clone());
+                    // Persist to DB cache (fire-and-forget)
+                    let _ = crate::db::upsert_character_name(pool, id, &name).await;
                 }
                 if let Some(profile) = s.live.profiles.get_mut(&id) {
                     if !name.is_empty() && profile.name.starts_with("Pilot #") {
@@ -279,6 +308,9 @@ pub async fn load_historical_killmails(
                 continue;
             }
 
+            let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+            let is_recent = timestamp > now_ms.saturating_sub(86_400_000);
+
             // Only update stats for profiles NOT already loaded from DB
             if let Some(kid) = killer_id {
                 let is_new = !existing_profiles.contains(&kid);
@@ -289,6 +321,9 @@ pub async fn load_historical_killmails(
                 });
                 if is_new {
                     profile.kill_count += 1;
+                    if is_recent {
+                        profile.recent_kills_24h += 1;
+                    }
                 }
                 profile.last_kill_timestamp = profile.last_kill_timestamp.max(timestamp);
                 if !system.is_empty() {

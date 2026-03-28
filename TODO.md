@@ -52,6 +52,11 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Nice to have
 
+- [ ] **Investigate SST Cloudflare StaticSite bug** — `Could not resolve "sst"`
+      in worker.ts:480 during `Runtime.Build`. Affects all Cloudflare Worker-based
+      components on SST 4.5.12. Static env vars don't help — bug is in the
+      component itself. File issue on github.com/sst/sst if not already reported.
+      Currently using `sst.aws.StaticSite` with `sst.cloudflare.dns()` as workaround.
 - [ ] **AI narrative feed** — use Claude API to generate story-style
       descriptions of events. Template fallback if API unavailable.
 - [ ] **Earned titles expansion** — add pattern-based titles:

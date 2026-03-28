@@ -39,7 +39,7 @@ export function PilotsView(props: PilotsViewProps) {
               (e) => e.timestamp_ms >= Date.now() - 86_400_000,
             ).length
           }{" "}
-          in the last 24 hours
+          last 24h
         </span>
       </h3>
 

@@ -49,10 +49,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         world_api::WorldApiClient::new(&config.world_api_url, &db_pool).await,
     ));
 
-    // Load persisted data
+    // Load persisted data under a scoped write lock.
+    // The block ensures the lock is released before spawning background tasks.
     {
         let mut s = state.write().await;
         db::load_into(&db_pool, &mut s.live).await?;
+        let name_count = db::load_character_names(&db_pool, &mut s.live).await?;
+        tracing::info!("Loaded {name_count} character names from DB cache");
         if let Some(cp) = db::load_checkpoint(&db_pool).await? {
             tracing::info!("Resuming from checkpoint {cp}");
             s.last_checkpoint = Some(cp);
@@ -71,8 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load historical data in background (API serves demo data immediately)
     let hist_state = state.clone();
     let hist_config = config.clone();
+    let hist_pool = db_pool.clone();
     tokio::spawn(async move {
-        historical::load_all(hist_config, hist_state).await;
+        historical::load_all(hist_config, hist_state, hist_pool).await;
     });
 
     // gRPC checkpoint streamer (always running for live data)

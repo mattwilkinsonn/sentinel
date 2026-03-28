@@ -94,15 +94,23 @@ impl DataStore {
             .max_by_key(|(_, c)| *c)
             .map(|(s, _)| s.to_string())
             .unwrap_or_default();
-        // Prefer resolved name over raw ID
-        let top_system = if !top_system_id.is_empty() {
+        // Resolve name: try cache, then check profiles for a resolved name
+        let top_system = if top_system_id.is_empty() {
+            String::new()
+        } else {
             self.system_name_cache
                 .get(&top_system_id)
                 .filter(|n| !n.is_empty())
                 .cloned()
+                .or_else(|| {
+                    self.profiles
+                        .values()
+                        .find(|p| p.last_seen_system == top_system_id)
+                        .map(|p| &p.last_seen_system_name)
+                        .filter(|n| !n.is_empty())
+                        .cloned()
+                })
                 .unwrap_or(top_system_id)
-        } else {
-            String::new()
         };
 
         let now = std::time::SystemTime::now()

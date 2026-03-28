@@ -3,10 +3,7 @@ use sqlx::postgres::PgPoolOptions;
 
 use crate::types::{DataStore, RawEvent, ThreatProfile};
 
-const MIGRATIONS: &[&str] = &[
-    include_str!("../migrations/001_init.sql"),
-    include_str!("../migrations/002_world_metadata.sql"),
-];
+const MIGRATIONS: &[&str] = &[include_str!("../migrations/001_init.sql")];
 
 /// Run all migrations on an existing pool.
 pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
@@ -194,4 +191,38 @@ struct EventRow {
     event_type: String,
     timestamp_ms: i64,
     data: serde_json::Value,
+}
+
+/// Load character names from DB cache into the DataStore name_cache.
+pub async fn load_character_names(
+    pool: &PgPool,
+    store: &mut DataStore,
+) -> Result<usize, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (i64, String)>(
+        "SELECT character_item_id, name FROM character_name_cache",
+    )
+    .fetch_all(pool)
+    .await?;
+    let count = rows.len();
+    for (id, name) in rows {
+        store.name_cache.insert(id as u64, name);
+    }
+    Ok(count)
+}
+
+/// Save a character name to the DB cache.
+pub async fn upsert_character_name(
+    pool: &PgPool,
+    character_item_id: u64,
+    name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO character_name_cache (character_item_id, name) VALUES ($1, $2) \
+         ON CONFLICT (character_item_id) DO UPDATE SET name = EXCLUDED.name, fetched_at = NOW()",
+    )
+    .bind(character_item_id as i64)
+    .bind(name)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

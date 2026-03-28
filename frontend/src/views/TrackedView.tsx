@@ -38,9 +38,10 @@ export function TrackedView(props: TrackedViewProps) {
     <div>
       <div class="flex items-center justify-between" style="margin-bottom:1rem">
         <h3 class="text-lg tracking-wider">
-          ACTIVE PILOTS
+          TRACKED PILOTS
           <span class="text-text-muted text-sm ml-2">
-            {active().length} of {props.profiles.length} tracked
+            {props.profiles.length} tracked · {active().length} with 24h
+            activity
           </span>
         </h3>
         <button
