@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  contracts:
+    name: Move Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sui CLI
+        run: |
+          curl -fsSL https://github.com/MystenLabs/sui/releases/latest/download/sui-ubuntu-x86_64.tgz | tar xz -C /usr/local/bin
+
+      - name: Build sentinel contracts
+        run: cd move-contracts/sentinel && sui move build
+
+      - name: Test sentinel contracts
+        run: cd move-contracts/sentinel && sui move test
+
+  backend:
+    name: Rust Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            sentinel-backend/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('sentinel-backend/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Clone Sui proto definitions
+        run: cd sentinel-backend && mkdir -p proto && git clone --depth 1 https://github.com/MystenLabs/sui-apis.git proto/sui-apis
+
+      - name: Check
+        run: cd sentinel-backend && cargo check
+
+      - name: Test
+        run: cd sentinel-backend && cargo test
+
+      - name: Build release
+        run: cd sentinel-backend && cargo build --release
+
+  frontend:
+    name: Solid.js Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: cd frontend && bun install
+
+      - name: Type check + build
+        run: cd frontend && bun run build
+
+      - name: Test
+        run: cd frontend && bun run test
+
+  deploy:
+    name: Deploy
+    needs: [contracts, backend, frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Install SST
+        run: curl -fsSL https://sst.dev/install | bash
+
+      - name: Deploy
+        run: |
+          export PATH=$HOME/.sst/bin:$PATH
+          cd infrastructure && sst deploy --stage production
+        env:
+          SENTINEL_PACKAGE_ID: ${{ secrets.SENTINEL_PACKAGE_ID }}
+          THREAT_REGISTRY_ID: ${{ secrets.THREAT_REGISTRY_ID }}
+          SENTINEL_ADMIN_CAP_ID: ${{ secrets.SENTINEL_ADMIN_CAP_ID }}
+          ADMIN_PRIVATE_KEY: ${{ secrets.ADMIN_PRIVATE_KEY }}
+          WORLD_PACKAGE_ID: ${{ secrets.WORLD_PACKAGE_ID }}
+          BUILDER_PACKAGE_ID: ${{ secrets.BUILDER_PACKAGE_ID }}
+          BOUNTY_BOARD_ID: ${{ secrets.BOUNTY_BOARD_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}

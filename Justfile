@@ -100,6 +100,22 @@ install: frontend-install scripts-install
 # Build everything
 build: contracts-build backend-build frontend-build
 
+# === Deploy ===
+
+# Deploy to AWS (production)
+deploy:
+    cd infrastructure && sst deploy --stage production
+
+# Deploy to AWS (dev/staging)
+deploy-dev:
+    cd infrastructure && sst deploy --stage dev
+
+# Remove deployment
+deploy-remove stage="dev":
+    cd infrastructure && sst remove --stage {{stage}}
+
+# === Dev ===
+
 # Run backend + frontend dev servers in parallel
 dev:
     @echo "Starting backend on :3001 and frontend on :5173..."

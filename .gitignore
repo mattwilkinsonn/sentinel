@@ -15,6 +15,10 @@ sentinel-backend/target/
 # gRPC protos (cloned at build time)
 sentinel-backend/proto/sui-apis/
 
+# SST
+.sst/
+infrastructure/.sst/
+
 # Environment
 .env
 .env.local
