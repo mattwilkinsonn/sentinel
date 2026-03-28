@@ -7,7 +7,7 @@ export default $config({
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
-        aws: "6.75.0",
+        aws: "7.22.0",
         neon: "0.13.0",
       },
     };
