@@ -122,7 +122,7 @@ export default $config({
       path: "../frontend",
       domain,
       build: {
-        command: "bun run build",
+        command: "bun install && bun run build",
         output: "dist",
       },
       environment: {
