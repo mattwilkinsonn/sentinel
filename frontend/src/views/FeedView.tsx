@@ -16,17 +16,21 @@ import type { RawEvent, ThreatProfile } from "../types";
 type FeedViewProps = {
   events: RawEvent[];
   profiles: ThreatProfile[];
+  names?: Record<string, string>;
+  systems?: Record<string, string>;
   loading?: boolean;
+};
+
+type Lookups = {
+  n: (id: unknown) => string;
+  sys: (id: unknown) => string;
 };
 
 type EventDisplay = {
   icon: Component<{ size?: number; class?: string }>;
   color: string;
   borderColor: string;
-  format: (
-    data: Record<string, unknown>,
-    nameOf: (id: unknown) => string,
-  ) => string;
+  format: (data: Record<string, unknown>, l: Lookups) => string;
 };
 
 const eventConfig: Record<string, EventDisplay> = {
@@ -34,68 +38,69 @@ const eventConfig: Record<string, EventDisplay> = {
     icon: Skull,
     color: "text-accent-red",
     borderColor: "var(--color-accent-red)",
-    format: (d, n) =>
-      `${n(d.killer_character_id)} killed ${n(d.target_item_id)}`,
+    format: (d, l) =>
+      `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
   },
   jump: {
     icon: Navigation,
     color: "text-accent-purple",
     borderColor: "var(--color-accent-purple)",
-    format: (d, n) =>
-      `${n(d.character_id)} jumped to ${d.solar_system_id ?? "?"}`,
+    format: (d, l) =>
+      `${l.n(d.character_id)} jumped to ${l.sys(d.solar_system_id)}`,
   },
   bounty_posted: {
     icon: Target,
     color: "text-accent-cyan",
     borderColor: "var(--color-accent-cyan)",
-    format: (d, n) =>
+    format: (d, l) =>
       d.poster_id
-        ? `${n(d.poster_id)} posted bounty on ${n(d.target_item_id)}`
-        : `Bounty posted on ${n(d.target_item_id)}`,
+        ? `${l.n(d.poster_id)} posted bounty on ${l.n(d.target_item_id)}`
+        : `Bounty posted on ${l.n(d.target_item_id)}`,
   },
   bounty_removed: {
     icon: Target,
     color: "text-text-muted",
     borderColor: "var(--color-text-muted)",
-    format: (d, n) =>
+    format: (d, l) =>
       d.poster_id
-        ? `${n(d.poster_id)} removed bounty on ${n(d.target_item_id)}`
-        : `Bounty removed from ${n(d.target_item_id)}`,
+        ? `${l.n(d.poster_id)} removed bounty on ${l.n(d.target_item_id)}`
+        : `Bounty removed from ${l.n(d.target_item_id)}`,
   },
   bounty_stacked: {
     icon: Target,
     color: "text-accent-blue",
     borderColor: "var(--color-accent-blue)",
-    format: (d, n) =>
+    format: (d, l) =>
       d.contributor_id
-        ? `${n(d.contributor_id)} added to bounty on ${n(d.target_item_id)}`
-        : `Bounty stacked on ${n(d.target_item_id)}`,
+        ? `${l.n(d.contributor_id)} added to bounty on ${l.n(d.target_item_id)}`
+        : `Bounty stacked on ${l.n(d.target_item_id)}`,
   },
   bounty_claimed: {
     icon: Trophy,
     color: "text-accent-green",
     borderColor: "var(--color-accent-green)",
-    format: (d, n) =>
-      `${n(d.hunter_id)} claimed bounty on ${n(d.target_item_id)}`,
+    format: (d, l) =>
+      `${l.n(d.hunter_id)} claimed bounty on ${l.n(d.target_item_id)}`,
   },
   score_change: {
     icon: Shield,
     color: "text-accent-gold",
     borderColor: "var(--color-accent-gold)",
-    format: (d, n) =>
-      `${n(d.character_id)} threat score updated to ${d.new_score ?? "?"}`,
+    format: (d, l) =>
+      `${l.n(d.character_id)} threat score updated to ${d.new_score ?? "?"}`,
   },
   gate_blocked: {
     icon: Zap,
     color: "text-accent-orange",
     borderColor: "var(--color-accent-orange)",
-    format: (d, n) => `${n(d.character_id)} blocked at gate — threat too high`,
+    format: (d, l) =>
+      `${l.n(d.character_id)} blocked at gate — threat too high`,
   },
   new_character: {
     icon: UserPlus,
     color: "text-text-primary",
     borderColor: "var(--color-text-primary)",
-    format: (d, n) => `New pilot detected: ${n(d.character_id)}`,
+    format: (d, l) => `New pilot detected: ${l.n(d.character_id)}`,
   },
 };
 
@@ -184,11 +189,20 @@ export function FeedView(props: FeedViewProps) {
   const timer = setInterval(() => setTick((t) => t + 1), 5_000);
   onCleanup(() => clearInterval(timer));
 
-  const nameOf = (id: unknown): string => {
-    if (id == null) return "?";
-    const numId = typeof id === "number" ? id : Number(id);
-    const profile = props.profiles.find((p) => p.character_item_id === numId);
-    return profile?.name || `Pilot #${numId}`;
+  const lookups: Lookups = {
+    n: (id: unknown): string => {
+      if (id == null) return "?";
+      const str = String(id);
+      if (props.names?.[str]) return props.names[str];
+      const numId = Number(id);
+      const profile = props.profiles.find((p) => p.character_item_id === numId);
+      return profile?.name || `Pilot #${numId}`;
+    },
+    sys: (id: unknown): string => {
+      if (id == null) return "?";
+      const str = String(id);
+      return props.systems?.[str] || str || "?";
+    },
   };
 
   const eventCounts = () => {
@@ -264,7 +278,7 @@ export function FeedView(props: FeedViewProps) {
             const config = () =>
               eventConfig[event.event_type] ?? eventConfig.kill;
             const message = () =>
-              config().format(event.data as Record<string, unknown>, nameOf);
+              config().format(event.data as Record<string, unknown>, lookups);
             const isNew = () => {
               tick();
               return Date.now() - event.timestamp_ms < 5_000;

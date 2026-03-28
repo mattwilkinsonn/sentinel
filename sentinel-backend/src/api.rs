@@ -56,10 +56,39 @@ async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoRespon
     };
 
     let demo_profiles = enrich(&state.demo.profiles);
-    let demo_events: Vec<_> = state.demo.recent_events.iter().take(500).cloned().collect();
+    let demo_events: Vec<_> = state
+        .demo
+        .recent_events
+        .iter()
+        .take(1000)
+        .cloned()
+        .collect();
 
     let live_profiles = enrich(&state.live.profiles);
-    let live_events: Vec<_> = state.live.recent_events.iter().take(500).cloned().collect();
+    let live_events: Vec<_> = state
+        .live
+        .recent_events
+        .iter()
+        .take(1000)
+        .cloned()
+        .collect();
+
+    // Name + system lookup maps for the frontend
+    let name_map: std::collections::HashMap<u64, &str> = state
+        .live
+        .profiles
+        .values()
+        .map(|p| (p.character_item_id, p.name.as_str()))
+        .chain(
+            state
+                .demo
+                .profiles
+                .values()
+                .map(|p| (p.character_item_id, p.name.as_str())),
+        )
+        .collect();
+
+    let system_map = &state.live.system_name_cache;
 
     Json(serde_json::json!({
         "demo": {
@@ -71,7 +100,9 @@ async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoRespon
             "threats": live_profiles,
             "events": live_events,
             "stats": state.live.compute_stats(),
-        }
+        },
+        "names": name_map,
+        "systems": system_map,
     }))
 }
 

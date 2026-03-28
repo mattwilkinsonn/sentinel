@@ -61,11 +61,6 @@ export default $config({
 
     const dbBranchId = db.defaultBranchId;
 
-    const dbEndpoint = new neon.Endpoint("SentinelDbEndpoint", {
-      projectId: db.id,
-      branchId: dbBranchId,
-    });
-
     const dbRole = new neon.Role("SentinelDbRole", {
       projectId: db.id,
       branchId: dbBranchId,
@@ -79,7 +74,7 @@ export default $config({
       ownerName: dbRole.name,
     });
 
-    const databaseUrl = $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${dbEndpoint.host}/${dbName.name}?sslmode=require`;
+    const databaseUrl = $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${db.databaseHost}/${dbName.name}?sslmode=require`;
 
     // VPC + ECS Cluster
     const vpc = new sst.aws.Vpc("SentinelVpc");
@@ -142,7 +137,7 @@ export default $config({
       domain,
       backendUrl: backend.url,
       frontendUrl: frontend.url,
-      databaseHost: dbEndpoint.host,
+      databaseHost: db.databaseHost,
     };
   },
 });

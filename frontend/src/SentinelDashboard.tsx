@@ -16,6 +16,8 @@ export type SubView = "leaderboard" | "tracked" | "kills" | "systems" | "feed";
 type CombinedData = {
   demo: { threats: ThreatProfile[]; events: RawEvent[]; stats: AggregateStats };
   live: { threats: ThreatProfile[]; events: RawEvent[]; stats: AggregateStats };
+  names?: Record<string, string>;
+  systems?: Record<string, string>;
 };
 
 const emptyStats: AggregateStats = {
@@ -38,6 +40,8 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
     data()?.[props.mode] ?? { threats: [], events: [], stats: emptyStats };
   const profiles = () => current().threats;
   const events = () => current().events;
+  const nameMap = () => data()?.names ?? {};
+  const systemMap = () => data()?.systems ?? {};
   const stats = () => current().stats;
 
   async function fetchData() {
@@ -119,6 +123,8 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
             <FeedView
               events={events()}
               profiles={profiles()}
+              names={nameMap()}
+              systems={systemMap()}
               loading={loading()}
             />
           </Show>
@@ -153,7 +159,12 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
             }
             onClick={() => handleStatClick("feed")}
           >
-            <SentinelFeed events={events()} profiles={profiles()} />
+            <SentinelFeed
+              events={events()}
+              profiles={profiles()}
+              names={nameMap()}
+              systems={systemMap()}
+            />
           </button>
         </Show>
       </div>

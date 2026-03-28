@@ -91,26 +91,35 @@ pub async fn load_character_names(
                 continue;
             }
 
-            // Extract item_id and name from character object
+            // Character object: {key: {item_id}, metadata: {name}, tribe_id, ...}
             let item_id =
                 extract_item_id(&contents["key"]).or_else(|| extract_item_id(&contents["item_id"]));
-            let name = contents["name"]
+            let name = contents["metadata"]["name"]
                 .as_str()
-                .or_else(|| contents["display_name"].as_str())
+                .or_else(|| contents["name"].as_str())
                 .unwrap_or("")
                 .to_string();
+            let tribe_id = contents["tribe_id"]
+                .as_u64()
+                .or_else(|| contents["tribe_id"].as_str().and_then(|s| s.parse().ok()))
+                .map(|id| id.to_string())
+                .unwrap_or_default();
 
             if let Some(id) = item_id {
                 if !name.is_empty() {
                     s.live.name_cache.insert(id, name.clone());
-                    if let Some(profile) = s.live.profiles.get_mut(&id) {
-                        if profile.name.starts_with("Pilot #") {
-                            profile.name = name;
-                            profile.dirty = true;
-                        }
-                    }
-                    total += 1;
                 }
+                if let Some(profile) = s.live.profiles.get_mut(&id) {
+                    if !name.is_empty() && profile.name.starts_with("Pilot #") {
+                        profile.name = name;
+                        profile.dirty = true;
+                    }
+                    if !tribe_id.is_empty() && profile.tribe_id.is_empty() {
+                        profile.tribe_id = tribe_id;
+                        profile.dirty = true;
+                    }
+                }
+                total += 1;
             }
         }
 

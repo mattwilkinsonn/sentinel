@@ -64,7 +64,7 @@ impl DataStore {
             }
         }
         self.recent_events.push_front(event);
-        if self.recent_events.len() > 500 {
+        if self.recent_events.len() > 1000 {
             self.recent_events.pop_back();
         }
     }
@@ -150,10 +150,10 @@ mod tests {
     }
 
     #[test]
-    fn push_event_caps_at_500() {
+    fn push_event_caps_at_1000() {
         let mut store = DataStore::default();
         let no_sse: Option<tokio::sync::broadcast::Sender<String>> = None;
-        for i in 0..600 {
+        for i in 0..1200 {
             store.push_event(
                 RawEvent {
                     event_type: "kill".into(),
@@ -163,8 +163,8 @@ mod tests {
                 &no_sse,
             );
         }
-        assert_eq!(store.recent_events.len(), 500);
-        assert_eq!(store.recent_events[0].timestamp_ms, 599);
+        assert_eq!(store.recent_events.len(), 1000);
+        assert_eq!(store.recent_events[0].timestamp_ms, 1199);
     }
 
     #[test]
