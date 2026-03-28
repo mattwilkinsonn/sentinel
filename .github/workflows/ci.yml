@@ -12,14 +12,14 @@ env:
 jobs:
   contracts:
     name: Move Contracts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Sui CLI
         run: |
           SUI_VERSION=$(curl -sS "https://api.github.com/repos/MystenLabs/sui/releases/latest" | jq -r '.tag_name')
-          curl -sSfL "https://github.com/MystenLabs/sui/releases/download/${SUI_VERSION}/sui-${SUI_VERSION}-ubuntu-x86_64.tgz" -o sui.tgz
+          curl -sSfL "https://github.com/MystenLabs/sui/releases/download/${SUI_VERSION}/sui-${SUI_VERSION}-ubuntu-aarch64.tgz" -o sui.tgz
           tar -xzf sui.tgz
           sudo mv sui /usr/local/bin/
           rm sui.tgz
@@ -111,7 +111,7 @@ jobs:
 
   frontend:
     name: Solid.js Frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -127,7 +127,7 @@ jobs:
 
   lint:
     name: Lint & Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -148,7 +148,7 @@ jobs:
       group: deploy-${{ github.ref }}
       cancel-in-progress: false
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     permissions:
       id-token: write
       contents: read
