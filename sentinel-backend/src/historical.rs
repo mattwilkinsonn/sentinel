@@ -1,5 +1,5 @@
-//! Historical killmail loading from Sui GraphQL.
-//! Fetches past killmails on startup to seed threat profiles.
+//! Historical data loading from Sui GraphQL.
+//! Fetches past killmails, character events, and jumps to seed threat profiles.
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -7,6 +7,37 @@ use tokio::sync::RwLock;
 use crate::config::AppConfig;
 use crate::threat_engine;
 use crate::types::{AppState, RawEvent, ThreatProfile};
+
+/// Load all historical data in sequence, then sort events.
+pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>) {
+    macro_rules! load {
+        ($fn:expr, $name:expr) => {
+            if let Err(e) = $fn.await {
+                tracing::warn!("{} failed: {e}", $name);
+            }
+        };
+    }
+
+    load!(
+        load_historical_killmails(&config, &state),
+        "Historical killmails"
+    );
+    load!(load_character_events(&config, &state), "Character events");
+    load!(load_jump_events(&config, &state), "Jump events");
+    load!(load_character_names(&config, &state), "Character names");
+
+    // Sort events newest first
+    let mut s = state.write().await;
+    s.live
+        .recent_events
+        .make_contiguous()
+        .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
+    s.live
+        .new_pilot_events
+        .make_contiguous()
+        .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
+    tracing::info!("Historical data load complete");
+}
 
 /// Extract a numeric item_id from nested {"item_id": "123", "tenant": "..."} or plain value.
 fn extract_item_id(v: &serde_json::Value) -> Option<u64> {
@@ -160,10 +191,16 @@ pub async fn load_historical_killmails(
         let s = state.read().await;
         s.live.profiles.keys().copied().collect()
     };
-    // If we already have events from DB, skip adding events (only create missing profiles)
-    let has_existing_events = {
+    // If we already have kill events from DB, skip adding them (avoid duplicates)
+    let has_existing_kills = {
         let s = state.read().await;
-        !s.live.recent_events.is_empty()
+        let has = s.live.recent_events.iter().any(|e| e.event_type == "kill");
+        tracing::info!(
+            "Kill dedup check: {} events in deque, has_existing_kills={}",
+            s.live.recent_events.len(),
+            has
+        );
+        has
     };
     // Track seen killmail object IDs to deduplicate within this load
     let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -276,8 +313,8 @@ pub async fn load_historical_killmails(
                 profile.threat_score = threat_engine::compute_score(profile);
             }
 
-            // Add event only if DB didn't already have events
-            if has_existing_events {
+            // Skip event if DB already has kill events
+            if has_existing_kills {
                 total += 1;
                 continue;
             }
@@ -452,13 +489,24 @@ async fn resolve_gate_name(
         Ok(resp) => {
             let json: serde_json::Value = resp.json().await.unwrap_or_default();
             let contents = &json["data"]["object"]["asMoveObject"]["contents"]["json"];
-            contents["metadata"]["name"]
+            // Try metadata.name, then fall back to key.item_id
+            let name = contents["metadata"]["name"]
                 .as_str()
-                .filter(|s| !s.is_empty())
-                .unwrap_or("Unknown Gate")
-                .to_string()
+                .filter(|s| !s.is_empty());
+            let item_id = contents["key"]["item_id"].as_str();
+            match (name, item_id) {
+                (Some(n), _) => n.to_string(),
+                (None, Some(id)) => format!("Gate #{id}"),
+                _ => {
+                    tracing::debug!("Could not resolve gate {gate_id}");
+                    format!("Gate {}", &gate_id[..8.min(gate_id.len())])
+                }
+            }
         }
-        Err(_) => "Unknown Gate".to_string(),
+        Err(e) => {
+            tracing::debug!("Failed to query gate {gate_id}: {e}");
+            format!("Gate {}", &gate_id[..8.min(gate_id.len())])
+        }
     };
     cache.insert(gate_id.to_string(), name.clone());
     name

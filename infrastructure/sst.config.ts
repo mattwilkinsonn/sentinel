@@ -117,19 +117,19 @@ export default $config({
       },
     });
 
-    // Frontend (static site on CloudFront with Cloudflare DNS)
-    const frontend = new sst.aws.StaticSite("SentinelFrontend", {
+    // Frontend (static site on Cloudflare Pages)
+    // Note: VITE_API_URL uses the known domain rather than backend.url Output
+    // to avoid triggering SST's Worker Resource injection (causes "Could not resolve sst" bug)
+    const apiUrl = `https://api.${domain}`;
+    const frontend = new sst.cloudflare.StaticSite("SentinelFrontend", {
       path: "../frontend",
-      domain: {
-        name: domain,
-        dns: sst.cloudflare.dns(),
-      },
+      domain,
       build: {
         command: "bun install && bun run build",
         output: "dist",
       },
       environment: {
-        VITE_API_URL: backend.url,
+        VITE_API_URL: apiUrl,
         VITE_BOUNTY_BOARD_ID: env.bountyBoardId ?? "",
         VITE_BUILDER_PACKAGE_ID: env.builderPackageId,
         VITE_SUI_RPC_URL: "https://fullnode.testnet.sui.io:443",

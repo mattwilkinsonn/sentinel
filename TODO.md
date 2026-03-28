@@ -4,59 +4,86 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Critical (must do)
 
-- [ ] **Fix SST deploy** — add NEON_ORG_ID secret, verify full deploy works
-- [ ] **Complete on-chain publisher** — build ProgrammableTransaction
-      for `threat_registry::batch_update`, resolve object refs via
-      LedgerService.GetObject, sign with admin key, submit via gRPC.
-      This is THE differentiator — scores must be verifiable on-chain.
-- [ ] **Verify live events flowing** — check event sample logs, confirm
-      Stillness world package ID matches. May need upgraded package ID
-      if world contracts were upgraded.
+- [x] ~~Fix SST deploy~~ — NEON_ORG_ID, historyRetention,
+      Cloudflare DNS, ARM containers on GHCR
+- [x] ~~Complete on-chain publisher~~ — built, but RPC returns
+      "Invalid value" — needs BCS serialization debugging
+- [x] ~~Verify live events flowing~~ — gRPC stream connected,
+      Stillness world package ID confirmed, diagnostic logging added
+- [ ] **Debug publisher RPC error** — `sui_executeTransactionBlock`
+      rejects our BCS payload. May need to use `SimulateTransaction`
+      first, or switch to the GraphQL `executeTransactionBlock` API.
+- [ ] **Deploy to production** — SST deploy blocked by Cloudflare
+      StaticSite bug, switched to AWS StaticSite. Needs clean deploy.
 - [ ] **Submit on Deepsurge** — register, submit repo link + materials
 
 ## High priority
 
-- [ ] **Frontend: show new fields** — display `last_seen_system_name`,
-      `tribe_name`, `titles`, `threat_tier` from API response.
-      Titles should render as badges on threat cards.
-- [ ] **Discord bot** — Rust bot (discord.js) that polls /api/data.
-      Commands: `/threat <pilot>`, `/leaderboard`, `/alerts <channel>`.
+- [x] ~~Frontend: show new fields~~ — titles, system names, tribe
+      names, threat tiers all displaying
+- [x] ~~Earned titles~~ — 14 title types computed from profile stats
+- [x] ~~Historical data loading~~ — killmails, character names,
+      jump events, character creation events from GraphQL
+- [x] ~~New Pilots view~~ — separate page with 24h count
+- [x] ~~Feed improvements~~ — separate gameplay/new_pilot events,
+      gate names resolved, Smart Gate jump labels
+- [ ] **Discord bot** — TS bot (discord.js) that polls /api/data.
+      Commands: `/threat <pilot>`, `/leaderboard`, `/alerts`.
       ~2 hours. Judges love seeing integrations.
-- [ ] **Demo video** — clear walkthrough: live events flowing, scoring,
-      dashboard, threat tiers, titles, on-chain registry, gate blocking.
-      This directly affects the "Visual Presentation & Demo" criterion.
+- [ ] **Demo video** — clear walkthrough: live events flowing,
+      scoring, dashboard, threat tiers, titles, on-chain registry,
+      gate blocking. Directly affects "Visual Presentation" criterion.
 
 ## Medium priority
 
-- [ ] **System map** — fetch all 24,502 systems from World API
-      (`GET /v2/solarsystems`), render as 2D Canvas scatter plot.
-      Color by threat density. ~3-4 hours.
+- [ ] **Time filters** — reusable dropdown component for 1h/24h/7d/all.
+      Wire into: events feed, systems view, tracked pilots, kills view.
+      Custom date range picker as stretch goal.
+- [ ] **Secondary kills view** — time-filtered kill leaderboard
+      (1h/24h/7d/custom) as alternate to the fixed 24h + all-time view.
+- [ ] **Pilot search** — search for a specific pilot by name or ID
+      across all tracked pilots (not just active ones).
+- [ ] **System map** — fetch all 24,502 systems from World API,
+      render as 3D Three.js scatter plot (like ef-map.com).
+      Color by threat density, animate live events. ~4 hours.
 - [ ] **Smart Gate demo** — deploy a gate on Stillness, authorize
       SENTINEL, demonstrate a pilot being blocked. Even a video of
-      this would score high on "Best Live Frontier Integration" ($11K).
-- [ ] **Historical killmail dedup** — check if we're double-counting
-      kills that are both in DB and GraphQL on restart.
+      this scores high on "Best Live Frontier Integration" ($11K).
 
 ## Nice to have
 
 - [ ] **AI narrative feed** — use Claude API to generate story-style
       descriptions of events. Template fallback if API unavailable.
-      WatchTower does this — would match their polish.
-- [ ] **Earned titles expansion** — add more titles based on patterns:
-      "Gate Camper" (kills near same system repeatedly),
-      "Fleet Commander" (kills at same timestamp as others),
-      "Night Stalker" (kills during off-peak hours).
-- [ ] **Alt detection** — WatchTower does behavioral fingerprint
-      comparison. Could flag accounts with similar kill patterns
-      or movement as likely alts. Complex, probably post-hackathon.
-- [ ] **Webhook/alert system** — push notifications for high-threat
-      events. Discord webhooks for kills, bounties, gate blocks.
-      Monolith does this well.
-- [ ] **Subscription model** — on-chain paid tiers via Move contract.
-      WatchTower has Scout/Oracle/Spymaster tiers. Judges might like
-      seeing a business model, but risks looking extractive.
+- [ ] **Earned titles expansion** — add pattern-based titles:
+      "Gate Camper", "Fleet Commander", "Night Stalker".
+- [ ] **Alt detection** — behavioral fingerprint comparison to flag
+      likely alternate accounts.
+- [ ] **Webhook/alert system** — Discord webhooks for kills, bounties,
+      gate blocks. Push notifications for high-threat events.
 - [ ] **Migrate to SolidStart** — SSR, file-based routing, API routes.
       Post-hackathon improvement for SEO and initial load performance.
+- [ ] **StatusChangedEvent / GateCreatedEvent** — track assembly
+      online/offline and new gate deployments from chain events.
+
+## Done (completed this session)
+
+- [x] Postgres persistence with SQLx + migrations
+- [x] Docker Compose for local dev
+- [x] World REST API integration (system names, tribes)
+- [x] Historical killmail loading from Sui GraphQL
+- [x] Character name resolution from GraphQL
+- [x] Jump event loading with gate name resolution
+- [x] New Pilots separate view and API key
+- [x] Earned titles (14 types) with badges on leaderboard
+- [x] On-chain publisher (built, needs RPC debug)
+- [x] Pre-commit hooks (biome, cargo fmt, yamllint, markdownlint)
+- [x] CI/CD with GitHub Actions (ARM builds, GHCR, SST deploy)
+- [x] Cloudflare DNS + AWS CloudFront for frontend
+- [x] Demo data with 25 pilots, realistic score distribution
+- [x] Event dedup (killmail objects, DB sync, separate deques)
+- [x] Background historical loading (API responsive immediately)
+- [x] All 50 backend tests + 43 frontend tests passing
+- [x] Zero warnings in Rust, zero biome errors in TypeScript
 
 ## Ideas from competitor projects
 
@@ -96,7 +123,12 @@ Deadline: March 31, 2026 23:59 UTC
 
 - World API: `https://world-api-stillness.live.tech.evefrontier.com/v2`
 - Sui GraphQL: `https://graphql.testnet.sui.io/graphql`
-- Stillness world package: `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c`
-- Killmail registry: `0x7fd9a32d0bbe7b1cfbb7140b1dd4312f54897de946c399edb21c3a12e52ce283`
-- EVE Frontier event fields use nested format: `{"item_id": "123", "tenant": "stillness"}`
+- Stillness world package:
+  `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c`
+- Killmail registry:
+  `0x7fd9a32d0bbe7b1cfbb7140b1dd4312f54897de946c399edb21c3a12e52ce283`
+- EVE Frontier event fields use nested format:
+  `{"item_id": "123", "tenant": "stillness"}`
 - Kill timestamps are in seconds (not ms) — convert on ingest
+- Smart Gate jumps only — regular jumps are server-side only
+- Gate objects have `metadata.name` but no solar system ID

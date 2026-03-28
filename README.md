@@ -32,11 +32,60 @@ Sui Blockchain (gRPC checkpoint stream)
 **On-chain:** Move smart contracts for threat registry
 and bounty board.
 
-**Backend:** Rust service ingests checkpoints via gRPC,
-scores threats, persists to Postgres, serves REST API + SSE.
+**Backend:** Rust/Tokio service with true multi-threaded
+concurrency. Spawns parallel tasks for gRPC checkpoint
+streaming, historical data loading, on-chain publishing,
+name/system resolution, and DB persistence — all running
+across multiple CPU cores simultaneously. SSE pushes
+events to the frontend the instant a checkpoint is processed.
 
-**Frontend:** Solid.js dashboard with real-time threat
-leaderboard, event feed, kill stats, and system intelligence.
+**Frontend:** Solid.js dashboard with fine-grained reactivity
+(no virtual DOM diffing). Real-time threat leaderboard,
+event feed, kill stats, system intelligence, and earned titles.
+
+### Concurrency model
+
+The backend runs multiple Tokio tasks in parallel:
+
+- **gRPC stream** — ingests Sui checkpoints in real-time
+- **Historical loader** — seeds profiles from GraphQL on startup
+- **On-chain publisher** — batches threat scores to the
+  ThreatRegistry contract every 30s
+- **Metadata resolver** — resolves system names and tribe
+  affiliations via World REST API
+- **DB sync loop** — flushes dirty profiles and events to
+  Postgres every 5s
+- **Demo event loop** — generates realistic fake events
+- **HTTP server** — serves REST API + SSE concurrently
+
+Unlike single-threaded async runtimes, Tokio distributes
+tasks across all available CPU cores. The gRPC stream can
+process a checkpoint on one core while the API serves a
+request on another — true parallelism, not cooperative
+multitasking.
+
+Shared state uses `Arc<RwLock<AppState>>` with a strict
+short-lock discipline:
+
+- **Readers never block readers.** Multiple API requests
+  read threat data simultaneously with zero contention.
+- **Writers hold locks for microseconds.** The gRPC handler
+  locks, updates one profile's stats, unlocks — then moves
+  to the next checkpoint. No lock is ever held across a
+  network call, disk write, or `.await` point.
+- **Expensive I/O happens outside locks.** The DB sync loop
+  snapshots dirty profiles under a brief write lock, then
+  performs all Postgres upserts with no lock held. The
+  historical loader resolves gate names via GraphQL
+  (network I/O) before acquiring the state lock to insert.
+- **Background tasks are independent.** The gRPC stream,
+  publisher, metadata resolver, and DB sync loop each
+  acquire locks independently — a slow World API response
+  in the metadata resolver never blocks the gRPC stream
+  from processing the next checkpoint.
+
+Historical data loads in the background so the API is
+responsive immediately on startup.
 
 ## Tech Stack
 

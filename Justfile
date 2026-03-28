@@ -128,6 +128,9 @@ check-move:
 # Install all dependencies
 install: frontend-install scripts-install
 
+# Run all tests
+test: backend-test frontend-test contracts-test
+
 # Build everything
 build: contracts-build backend-build frontend-build
 

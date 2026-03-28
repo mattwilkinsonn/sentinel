@@ -5,17 +5,30 @@ import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
 
 type TrackedViewProps = {
   profiles: ThreatProfile[];
+  newPilotCount: number;
   onSelect: (id: number) => void;
+  onViewPilots: () => void;
   loading?: boolean;
 };
 
 export function TrackedView(props: TrackedViewProps) {
+  const sevenDaysAgo = () => Date.now() - 7 * 86_400_000;
+
+  const active = () =>
+    props.profiles.filter(
+      (p) =>
+        p.last_kill_timestamp >= sevenDaysAgo() ||
+        p.kill_count > 0 ||
+        p.death_count > 0 ||
+        p.bounty_count > 0,
+    );
+
   const sorted = () =>
-    [...props.profiles].sort((a, b) => b.threat_score - a.threat_score);
+    [...active()].sort((a, b) => b.threat_score - a.threat_score);
 
   const tierCounts = () => {
     const counts = { LOW: 0, MODERATE: 0, HIGH: 0, CRITICAL: 0 };
-    for (const p of props.profiles) {
+    for (const p of active()) {
       counts[getThreatTier(p.threat_score)]++;
     }
     return counts;
@@ -23,9 +36,22 @@ export function TrackedView(props: TrackedViewProps) {
 
   return (
     <div>
-      <h3 class="text-lg tracking-wider" style="margin-bottom:1rem">
-        ALL TRACKED CHARACTERS ({props.profiles.length})
-      </h3>
+      <div class="flex items-center justify-between" style="margin-bottom:1rem">
+        <h3 class="text-lg tracking-wider">
+          ACTIVE PILOTS
+          <span class="text-text-muted text-sm ml-2">
+            {active().length} of {props.profiles.length} tracked
+          </span>
+        </h3>
+        <button
+          type="button"
+          class="flex items-center gap-2 px-3 py-1.5 rounded text-xs bg-transparent border border-border-default text-text-secondary hover:text-text-primary hover:border-border-hover transition-all"
+          onClick={props.onViewPilots}
+        >
+          NEW PILOTS
+          <span class="text-text-muted">({props.newPilotCount})</span>
+        </button>
+      </div>
 
       <LoadingState
         loading={props.loading ?? false}

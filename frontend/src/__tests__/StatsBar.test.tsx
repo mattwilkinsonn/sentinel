@@ -32,21 +32,23 @@ describe("StatsBar", () => {
     },
   ];
 
-  it("renders all five stat cards", () => {
+  it("renders all six stat cards", () => {
     render(() => (
       <StatsBar
         stats={mockStats}
         profiles={mockProfiles}
+        newPilotCount={5}
         activeView="leaderboard"
         onStatClick={() => {}}
       />
     ));
 
-    expect(screen.getByText("TRACKED")).toBeTruthy();
-    expect(screen.getByText("ACTIVE THREATS")).toBeTruthy();
-    expect(screen.getByText("TOTAL EVENTS")).toBeTruthy();
+    expect(screen.getByText("EVENTS 24H")).toBeTruthy();
     expect(screen.getByText("KILLS 24H")).toBeTruthy();
+    expect(screen.getByText("ACTIVE THREATS")).toBeTruthy();
     expect(screen.getByText("TOP SYSTEM")).toBeTruthy();
+    expect(screen.getByText("TRACKED")).toBeTruthy();
+    expect(screen.getByText("NEW PILOTS 24H")).toBeTruthy();
   });
 
   it("displays correct values", () => {
@@ -54,6 +56,7 @@ describe("StatsBar", () => {
       <StatsBar
         stats={mockStats}
         profiles={mockProfiles}
+        newPilotCount={5}
         activeView="leaderboard"
         onStatClick={() => {}}
       />
@@ -71,6 +74,7 @@ describe("StatsBar", () => {
       <StatsBar
         stats={{ ...mockStats, top_system: "", total_events: 0 }}
         profiles={[]}
+        newPilotCount={0}
         activeView="leaderboard"
         onStatClick={() => {}}
       />
@@ -85,6 +89,7 @@ describe("StatsBar", () => {
       <StatsBar
         stats={mockStats}
         profiles={mockProfiles}
+        newPilotCount={5}
         activeView="leaderboard"
         onStatClick={onClick}
       />

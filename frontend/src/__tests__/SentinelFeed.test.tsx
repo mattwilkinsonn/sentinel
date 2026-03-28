@@ -80,12 +80,18 @@ describe("SentinelFeed", () => {
       {
         event_type: "jump",
         timestamp_ms: Date.now() - 120_000,
-        data: { character_id: 789, solar_system_id: "X-4419" },
+        data: {
+          character_id: 789,
+          source_gate: "ALPHA-1",
+          dest_gate: "BETA-2",
+        },
       },
     ];
 
     render(() => <SentinelFeed events={events} profiles={mockProfiles} />);
-    expect(screen.getByText("Dread Solaris jumped to X-4419")).toBeTruthy();
+    expect(
+      screen.getByText("Dread Solaris jumped ALPHA-1 → BETA-2"),
+    ).toBeTruthy();
   });
 
   it("renders bounty posted events with name", () => {

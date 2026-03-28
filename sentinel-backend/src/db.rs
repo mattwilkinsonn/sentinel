@@ -66,7 +66,7 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
     // Load recent events (most recent 200)
     let events = sqlx::query_as::<_, EventRow>(
         "SELECT event_type, timestamp_ms, data FROM raw_events \
-         ORDER BY timestamp_ms DESC LIMIT 200",
+         ORDER BY timestamp_ms DESC LIMIT 1000",
     )
     .fetch_all(pool)
     .await?;

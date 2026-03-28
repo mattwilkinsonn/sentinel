@@ -47,6 +47,7 @@ pub struct AggregateStats {
 pub struct DataStore {
     pub profiles: HashMap<u64, ThreatProfile>,
     pub recent_events: VecDeque<RawEvent>,
+    pub new_pilot_events: VecDeque<RawEvent>,
     pub name_cache: HashMap<u64, String>,
     /// Solar system ID → name cache (populated by metadata resolver)
     pub system_name_cache: HashMap<String, String>,
@@ -63,9 +64,16 @@ impl DataStore {
                 let _ = tx.send(json);
             }
         }
-        self.recent_events.push_front(event);
-        if self.recent_events.len() > 1000 {
-            self.recent_events.pop_back();
+        if event.event_type == "new_character" {
+            self.new_pilot_events.push_front(event);
+            if self.new_pilot_events.len() > 500 {
+                self.new_pilot_events.pop_back();
+            }
+        } else {
+            self.recent_events.push_front(event);
+            if self.recent_events.len() > 1000 {
+                self.recent_events.pop_back();
+            }
         }
     }
 
@@ -81,18 +89,39 @@ impl DataStore {
                 *system_counts.entry(&p.last_seen_system).or_default() += 1;
             }
         }
-        let top_system = system_counts
+        let top_system_id = system_counts
             .into_iter()
             .max_by_key(|(_, c)| *c)
             .map(|(s, _)| s.to_string())
             .unwrap_or_default();
+        // Prefer resolved name over raw ID
+        let top_system = if !top_system_id.is_empty() {
+            self.system_name_cache
+                .get(&top_system_id)
+                .filter(|n| !n.is_empty())
+                .cloned()
+                .unwrap_or(top_system_id)
+        } else {
+            String::new()
+        };
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let day_ago = now.saturating_sub(86_400_000);
+        let events_24h = self
+            .recent_events
+            .iter()
+            .filter(|e| e.timestamp_ms >= day_ago)
+            .count() as u64;
 
         AggregateStats {
             total_tracked: total,
             avg_score: avg,
             kills_24h,
             top_system,
-            total_events: self.recent_events.len() as u64,
+            total_events: events_24h,
         }
     }
 }

@@ -1,12 +1,4 @@
-import {
-  Navigation,
-  Shield,
-  Skull,
-  Target,
-  Trophy,
-  UserPlus,
-  Zap,
-} from "lucide-solid";
+import { Navigation, Shield, Skull, Target, Trophy, Zap } from "lucide-solid";
 import { type Component, createSignal, For, onCleanup } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import type { RawEvent, ThreatProfile } from "./types";
@@ -62,7 +54,7 @@ const eventConfig: Record<string, EventDisplay> = {
     borderColor: "var(--color-accent-purple)",
     format: (d, l) =>
       d.source_gate && d.dest_gate
-        ? `${l.n(d.character_id)} gated ${d.source_gate} → ${d.dest_gate}`
+        ? `${l.n(d.character_id)} jumped ${d.source_gate} → ${d.dest_gate}`
         : `${l.n(d.character_id)} used smart gate`,
   },
   score_change: {
@@ -92,12 +84,6 @@ const eventConfig: Record<string, EventDisplay> = {
     color: "text-accent-orange",
     borderColor: "var(--color-accent-orange)",
     format: (d, l) => `${l.n(d.character_id)} blocked at gate`,
-  },
-  new_character: {
-    icon: UserPlus,
-    color: "text-text-primary",
-    borderColor: "var(--color-text-primary)",
-    format: (d, l) => `New pilot: ${l.n(d.character_id)}`,
   },
 };
 
@@ -142,7 +128,7 @@ export function SentinelFeed(props: SentinelFeedProps) {
         <div class="live-dot" />
         LIVE INTEL
       </h4>
-      <div class="flex flex-col gap-1 overflow-y-auto flex-1 min-h-0">
+      <div class="flex flex-col gap-1 overflow-hidden flex-1 min-h-0">
         <For each={props.events.slice(0, 50)}>
           {(event) => {
             const config = () =>

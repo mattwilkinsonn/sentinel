@@ -175,6 +175,107 @@ const DEMO_CHARACTERS: &[DemoCharacter] = &[
         systems: 3,
         system_name: "H-5534",
     },
+    // Additional pilots
+    DemoCharacter {
+        id: 34201,
+        name: "Hex Remnant",
+        kills: 15,
+        deaths: 4,
+        bounties: 1,
+        recent_24h: 2,
+        systems: 7,
+        system_name: "Q-2281",
+    },
+    DemoCharacter {
+        id: 56789,
+        name: "Flux Daemon",
+        kills: 22,
+        deaths: 6,
+        bounties: 0,
+        recent_24h: 3,
+        systems: 4,
+        system_name: "R-0099",
+    },
+    DemoCharacter {
+        id: 67234,
+        name: "Echo Vanta",
+        kills: 6,
+        deaths: 2,
+        bounties: 1,
+        recent_24h: 1,
+        systems: 10,
+        system_name: "W-7714",
+    },
+    DemoCharacter {
+        id: 78901,
+        name: "Null Vector",
+        kills: 35,
+        deaths: 7,
+        bounties: 2,
+        recent_24h: 4,
+        systems: 5,
+        system_name: "Q-2281",
+    },
+    DemoCharacter {
+        id: 89012,
+        name: "Shade Proxy",
+        kills: 11,
+        deaths: 9,
+        bounties: 0,
+        recent_24h: 2,
+        systems: 8,
+        system_name: "R-0099",
+    },
+    DemoCharacter {
+        id: 91234,
+        name: "Drift Cipher",
+        kills: 8,
+        deaths: 3,
+        bounties: 1,
+        recent_24h: 1,
+        systems: 6,
+        system_name: "W-7714",
+    },
+    DemoCharacter {
+        id: 10234,
+        name: "Blaze Axiom",
+        kills: 19,
+        deaths: 5,
+        bounties: 0,
+        recent_24h: 3,
+        systems: 3,
+        system_name: "Z-0091",
+    },
+    DemoCharacter {
+        id: 11345,
+        name: "Void Syntex",
+        kills: 3,
+        deaths: 11,
+        bounties: 0,
+        recent_24h: 0,
+        systems: 5,
+        system_name: "N-8820",
+    },
+    DemoCharacter {
+        id: 12456,
+        name: "Wreck Auton",
+        kills: 28,
+        deaths: 4,
+        bounties: 2,
+        recent_24h: 5,
+        systems: 4,
+        system_name: "J-1042",
+    },
+    DemoCharacter {
+        id: 13567,
+        name: "Ghost Sigma",
+        kills: 0,
+        deaths: 2,
+        bounties: 0,
+        recent_24h: 0,
+        systems: 15,
+        system_name: "H-5534",
+    },
 ];
 
 const SYSTEMS: &[&str] = &[
@@ -294,6 +395,20 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
         );
     }
 
+    // Seed new pilot events
+    for c in DEMO_CHARACTERS.iter().take(5) {
+        let age_ms = rng.random_range(60_000..600_000u64);
+        let sse = s.sse_tx.clone();
+        s.demo.push_event(
+            RawEvent {
+                event_type: "new_character".to_string(),
+                timestamp_ms: now - age_ms,
+                data: serde_json::json!({ "character_id": c.id }),
+            },
+            &sse,
+        );
+    }
+
     // Sort events newest first
     s.demo
         .recent_events
@@ -343,16 +458,32 @@ pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
                 }),
             )
         } else if event_roll < 55 {
-            // Jump
+            // Smart Gate Jump
             let char_idx = rng.random_range(0..char_count);
             let c = &DEMO_CHARACTERS[char_idx];
-            let system = SYSTEMS[rng.random_range(0..SYSTEMS.len())];
+            let gate_names = [
+                "ALPHA-1",
+                "DELTA-7",
+                "OMEGA-3",
+                "SIGMA-9",
+                "NEXUS-2",
+                "VORTEX-4",
+                "IRON GATE",
+                "WARP GATE",
+            ];
+            let src = gate_names[rng.random_range(0..gate_names.len())];
+            let mut dst_idx = rng.random_range(0..gate_names.len());
+            while gate_names[dst_idx] == src {
+                dst_idx = rng.random_range(0..gate_names.len());
+            }
+            let dst = gate_names[dst_idx];
 
             (
                 "jump",
                 serde_json::json!({
                     "character_id": c.id,
-                    "solar_system_id": system,
+                    "source_gate": src,
+                    "dest_gate": dst,
                 }),
             )
         } else if event_roll < 68 {
@@ -529,12 +660,7 @@ pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
             "jump" => {
                 let char_id = data["character_id"].as_u64().unwrap();
                 if let Some(p) = s.demo.profiles.get_mut(&char_id) {
-                    if let Some(sys) = data["solar_system_id"].as_str() {
-                        if p.last_seen_system != sys {
-                            p.systems_visited += 1;
-                            p.last_seen_system = sys.to_string();
-                        }
-                    }
+                    p.systems_visited += 1;
                     p.threat_score = threat_engine::compute_score(p);
                 }
             }

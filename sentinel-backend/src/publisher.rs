@@ -48,9 +48,22 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
 
     let http = reqwest::Client::new();
     let rpc_url = "https://fullnode.testnet.sui.io:443";
+    let mut consecutive_failures: u32 = 0;
 
     loop {
-        tokio::time::sleep(interval).await;
+        // Back off on repeated failures (30s, 60s, 120s, max 5min)
+        let wait = if consecutive_failures > 0 {
+            let backoff = interval * 2u32.pow(consecutive_failures.min(4));
+            tracing::info!(
+                "Publisher backing off for {}s after {} failures",
+                backoff.as_secs(),
+                consecutive_failures
+            );
+            backoff
+        } else {
+            interval
+        };
+        tokio::time::sleep(wait).await;
 
         let dirty_profiles: Vec<_> = {
             let state = state.read().await;
@@ -67,6 +80,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
             continue;
         }
 
+        let mut batch_ok = true;
         for chunk in dirty_profiles.chunks(50) {
             match publish_batch(
                 &config,
@@ -90,8 +104,16 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
                 }
                 Err(e) => {
                     tracing::error!("Failed to publish batch: {e}");
+                    batch_ok = false;
+                    break; // Don't try more batches if one fails
                 }
             }
+        }
+
+        if batch_ok {
+            consecutive_failures = 0;
+        } else {
+            consecutive_failures += 1;
         }
     }
 }

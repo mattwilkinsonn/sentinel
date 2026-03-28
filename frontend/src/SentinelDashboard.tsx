@@ -6,16 +6,30 @@ import { ThreatLeaderboard } from "./ThreatLeaderboard";
 import type { AggregateStats, RawEvent, ThreatProfile } from "./types";
 import { FeedView } from "./views/FeedView";
 import { KillsView } from "./views/KillsView";
+import { PilotsView } from "./views/PilotsView";
 import { SystemsView } from "./views/SystemsView";
 import { TrackedView } from "./views/TrackedView";
 
 const API_BASE = "";
 
-export type SubView = "leaderboard" | "tracked" | "kills" | "systems" | "feed";
+export type SubView =
+  | "leaderboard"
+  | "tracked"
+  | "kills"
+  | "systems"
+  | "feed"
+  | "pilots";
+
+type ModeData = {
+  threats: ThreatProfile[];
+  events: RawEvent[];
+  new_pilots: RawEvent[];
+  stats: AggregateStats;
+};
 
 type CombinedData = {
-  demo: { threats: ThreatProfile[]; events: RawEvent[]; stats: AggregateStats };
-  live: { threats: ThreatProfile[]; events: RawEvent[]; stats: AggregateStats };
+  demo: ModeData;
+  live: ModeData;
   names?: Record<string, string>;
   systems?: Record<string, string>;
 };
@@ -35,11 +49,23 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
   );
   const [subView, setSubView] = createSignal<SubView>("feed");
   const [loading, setLoading] = createSignal(true);
+  const [contentHeight, setContentHeight] = createSignal(600);
+  let contentRef: HTMLDivElement | undefined;
 
   const current = () =>
-    data()?.[props.mode] ?? { threats: [], events: [], stats: emptyStats };
+    data()?.[props.mode] ?? {
+      threats: [],
+      events: [],
+      new_pilots: [],
+      stats: emptyStats,
+    };
   const profiles = () => current().threats;
   const events = () => current().events;
+  const newPilots = () => current().new_pilots ?? [];
+  const newPilots24h = () => {
+    const dayAgo = Date.now() - 86_400_000;
+    return newPilots().filter((e) => e.timestamp_ms >= dayAgo);
+  };
   const nameMap = () => data()?.names ?? {};
   const systemMap = () => data()?.systems ?? {};
   const stats = () => current().stats;
@@ -59,6 +85,18 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
     fetchData();
     const interval = setInterval(fetchData, 10_000);
     onCleanup(() => clearInterval(interval));
+  });
+
+  // Track left content height for the mini feed sidebar
+  createEffect(() => {
+    if (!contentRef) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContentHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(contentRef);
+    onCleanup(() => observer.disconnect());
   });
 
   // SSE triggers re-fetch on new events
@@ -93,6 +131,7 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
       <StatsBar
         stats={stats()}
         profiles={profiles()}
+        newPilotCount={newPilots24h().length}
         activeView={subView()}
         onStatClick={handleStatClick}
       />
@@ -100,12 +139,14 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
       {/* Main content */}
       <div class="flex gap-6 mt-6 items-start">
         {/* Left: main view */}
-        <div class="flex-1 min-w-0">
+        <div class="flex-1 min-w-0" ref={(el) => (contentRef = el)}>
           {/* Sub-views */}
           <Show when={subView() === "tracked"}>
             <TrackedView
               profiles={profiles()}
+              newPilotCount={newPilots24h().length}
               onSelect={handleSelectCharacter}
+              onViewPilots={() => setSubView("pilots")}
               loading={loading()}
             />
           </Show>
@@ -126,6 +167,14 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
               profiles={profiles()}
               names={nameMap()}
               systems={systemMap()}
+              loading={loading()}
+            />
+          </Show>
+          <Show when={subView() === "pilots"}>
+            <PilotsView
+              events={newPilots()}
+              profiles={profiles()}
+              names={nameMap()}
               loading={loading()}
             />
           </Show>
@@ -152,8 +201,8 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
         <Show when={subView() !== "feed"}>
           <button
             type="button"
-            class="w-80 shrink-0 hidden lg:block overflow-hidden cursor-pointer bg-transparent border-none p-0 text-left sticky top-4"
-            style="max-height:calc(100vh - 2rem)"
+            class="w-80 shrink-0 hidden lg:block cursor-pointer bg-transparent border-none p-0 text-left overflow-hidden sticky top-20"
+            style={`height:min(${contentHeight()}px, calc(100vh - 6rem))`}
             onClick={() => handleStatClick("feed")}
           >
             <SentinelFeed

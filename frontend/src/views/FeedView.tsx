@@ -1,12 +1,4 @@
-import {
-  Navigation,
-  Shield,
-  Skull,
-  Target,
-  Trophy,
-  UserPlus,
-  Zap,
-} from "lucide-solid";
+import { Navigation, Shield, Skull, Target, Trophy, Zap } from "lucide-solid";
 import { type Component, createSignal, For, onCleanup, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { LoadingState } from "../LoadingState";
@@ -47,7 +39,7 @@ const eventConfig: Record<string, EventDisplay> = {
     borderColor: "var(--color-accent-purple)",
     format: (d, l) =>
       d.source_gate && d.dest_gate
-        ? `${l.n(d.character_id)} gated ${d.source_gate} → ${d.dest_gate}`
+        ? `${l.n(d.character_id)} jumped ${d.source_gate} → ${d.dest_gate}`
         : `${l.n(d.character_id)} used smart gate`,
   },
   bounty_posted: {
@@ -98,12 +90,6 @@ const eventConfig: Record<string, EventDisplay> = {
     format: (d, l) =>
       `${l.n(d.character_id)} blocked at gate — threat too high`,
   },
-  new_character: {
-    icon: UserPlus,
-    color: "text-text-primary",
-    borderColor: "var(--color-text-primary)",
-    format: (d, l) => `New pilot detected: ${l.n(d.character_id)}`,
-  },
 };
 
 const EVENT_ORDER = [
@@ -111,56 +97,57 @@ const EVENT_ORDER = [
     key: "kill",
     singular: "kill",
     plural: "kills",
-    tooltip: "Player killed another player in combat",
+    tooltip:
+      "Player killed another player in combat. Click to filter events by kills.",
   },
   {
     key: "jump",
-    singular: "jump",
-    plural: "jumps",
-    tooltip: "Player moved between solar systems via a gate",
+    singular: "gate jump",
+    plural: "gate jumps",
+    tooltip:
+      "Player used a Smart Gate to travel between systems. Click to filter events by gate jumps.",
   },
   {
     key: "bounty_posted",
     singular: "bounty posted",
     plural: "bounties posted",
-    tooltip: "A reward was placed on a target's head",
+    tooltip:
+      "A reward was placed on a target's head. Click to filter events by bounty postings.",
   },
   {
     key: "bounty_stacked",
     singular: "bounty stacked",
     plural: "bounties stacked",
-    tooltip: "Additional reward added to an existing bounty by a contributor",
+    tooltip:
+      "Additional reward added to an existing bounty. Click to filter events by bounty stacks.",
   },
   {
     key: "bounty_removed",
     singular: "bounty removed",
     plural: "bounties removed",
-    tooltip: "A bounty was cancelled or a contribution withdrawn",
+    tooltip:
+      "A bounty was cancelled or a contribution withdrawn. Click to filter events by bounty removals.",
   },
   {
     key: "bounty_claimed",
     singular: "bounty claimed",
     plural: "bounties claimed",
-    tooltip: "A hunter killed their target and collected the reward",
+    tooltip:
+      "A hunter killed their target and collected the reward. Click to filter events by bounty claims.",
   },
   {
     key: "score_change",
     singular: "score change",
     plural: "score changes",
-    tooltip: "A pilot's threat score was recalculated based on recent activity",
+    tooltip:
+      "A pilot's threat score was recalculated based on recent activity. Click to filter events by score changes.",
   },
   {
     key: "gate_blocked",
     singular: "gate block",
     plural: "gate blocks",
     tooltip:
-      "A high-threat pilot was denied passage through a sentinel-controlled gate",
-  },
-  {
-    key: "new_character",
-    singular: "new pilot",
-    plural: "new pilots",
-    tooltip: "A previously unknown pilot was detected in the threat network",
+      "A high-threat pilot was denied passage through a sentinel-controlled gate. Click to filter events by gate blocks.",
   },
 ] as const;
 
@@ -230,15 +217,25 @@ export function FeedView(props: FeedViewProps) {
         <div class="live-dot" />
         INTEL FEED
         <span class="text-text-muted text-sm">
-          {filter()
-            ? `${filteredEvents().length} ${filter()?.replace("_", " ")} events`
-            : `${props.events.length} events`}
+          {(() => {
+            const dayAgo = Date.now() - 86_400_000;
+            const recent = props.events.filter(
+              (e) => e.timestamp_ms >= dayAgo,
+            ).length;
+            const shown = filter()
+              ? filteredEvents().length
+              : props.events.length;
+            const label = filter()
+              ? `${shown} ${filter()?.replace("_", " ")}`
+              : `${shown} total`;
+            return `${label} · ${recent} last 24h`;
+          })()}
         </span>
       </h3>
 
       {/* Filter cards */}
       <div
-        class="grid grid-cols-4 lg:grid-cols-9 gap-2"
+        class="grid grid-cols-4 lg:grid-cols-8 gap-2"
         style="margin-bottom:1.5rem"
       >
         {EVENT_ORDER.map((item) => {

@@ -59,36 +59,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Load historical data from Sui GraphQL
-    if let Err(e) = historical::load_historical_killmails(&config, &state).await {
-        tracing::warn!("Historical killmail load failed: {e}");
-    }
-    if let Err(e) = historical::load_character_events(&config, &state).await {
-        tracing::warn!("Character event load failed: {e}");
-    }
-    if let Err(e) = historical::load_jump_events(&config, &state).await {
-        tracing::warn!("Jump event load failed: {e}");
-    }
-    if let Err(e) = historical::load_character_names(&config, &state).await {
-        tracing::warn!("Character name load failed: {e}");
-    }
-
-    // Sort events newest first after historical load
-    {
-        let mut s = state.write().await;
-        s.live
-            .recent_events
-            .make_contiguous()
-            .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
-    }
-
-    // Seed demo data
+    // Seed demo data immediately (so dashboard is usable while historical loads)
     demo::seed_demo_data(state.clone()).await;
 
     // Demo event loop (always running)
     let demo_state = state.clone();
     tokio::spawn(async move {
         demo::demo_event_loop(demo_state).await;
+    });
+
+    // Load historical data in background (API serves demo data immediately)
+    let hist_state = state.clone();
+    let hist_config = config.clone();
+    tokio::spawn(async move {
+        historical::load_all(hist_config, hist_state).await;
     });
 
     // gRPC checkpoint streamer (always running for live data)
