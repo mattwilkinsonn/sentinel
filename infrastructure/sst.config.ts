@@ -30,6 +30,11 @@ function loadEnv(): EnvConfig {
   };
 }
 
+function domainForStage(stage: string): string {
+  if (stage === "production") return "sentinel.zireael.dev";
+  return `sentinel-${stage}.zireael.dev`;
+}
+
 export default $config({
   app(input) {
     return {
@@ -39,11 +44,13 @@ export default $config({
       providers: {
         aws: "7.22.0",
         neon: "0.13.0",
+        cloudflare: "6.13.0",
       },
     };
   },
   async run() {
     const env = loadEnv();
+    const domain = domainForStage($app.stage);
 
     // Postgres database (Neon serverless)
     const db = new neon.Project("SentinelDb", {
@@ -52,7 +59,6 @@ export default $config({
       historyRetentionSeconds: 21600,
     });
 
-    // Use the default branch created automatically with the project
     const dbBranchId = db.defaultBranchId;
 
     const dbEndpoint = new neon.Endpoint("SentinelDbEndpoint", {
@@ -94,7 +100,14 @@ export default $config({
         interval: "30 seconds",
       },
       loadBalancer: {
-        rules: [{ listen: "80/http", forward: "3001/http" }],
+        domain: {
+          name: `api.${domain}`,
+          dns: sst.cloudflare.dns(),
+        },
+        rules: [
+          { listen: "443/https", forward: "3001/http" },
+          { listen: "80/http", forward: "3001/http" },
+        ],
       },
       environment: {
         SENTINEL_API_PORT: "3001",
@@ -109,9 +122,10 @@ export default $config({
       },
     });
 
-    // Frontend (static site on CloudFront)
-    const frontend = new sst.aws.StaticSite("SentinelFrontend", {
+    // Frontend (static site on Cloudflare Pages)
+    const frontend = new sst.cloudflare.StaticSite("SentinelFrontend", {
       path: "../frontend",
+      domain,
       build: {
         command: "bun run build",
         output: "dist",
@@ -125,6 +139,7 @@ export default $config({
     });
 
     return {
+      domain,
       backendUrl: backend.url,
       frontendUrl: frontend.url,
       databaseHost: dbEndpoint.host,

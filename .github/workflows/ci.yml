@@ -120,7 +120,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [contracts, backend, frontend, lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -145,11 +145,21 @@ jobs:
           key: sst-${{ hashFiles('infrastructure/sst.config.ts') }}
           restore-keys: sst-
 
-      - name: Deploy
+      - name: Determine stage
+        id: stage
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "stage=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "stage=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy (${{ steps.stage.outputs.stage }})
         run: |
           export PATH=$HOME/.sst/bin:$PATH
-          cd infrastructure && sst install && sst deploy --stage production
+          cd infrastructure && sst install && sst deploy --stage ${{ steps.stage.outputs.stage }}
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
           SENTINEL_PACKAGE_ID: ${{ secrets.SENTINEL_PACKAGE_ID }}
