@@ -128,6 +128,235 @@ export default $config({
       },
     });
 
+    // CloudWatch: operational alarms + dashboard
+    // (The auto-scaling alarms are noise — these are the real ones.)
+    const region = aws.getRegionOutput().name;
+    const albArnSuffix = backend.nodes.loadBalancer.arnSuffix;
+    const ecsClusterName = cluster.nodes.cluster.name;
+
+    const snsAlarmTopic = new aws.sns.Topic("SentinelAlarmTopic", {
+      name: `sentinel-${$app.stage}-alarms`,
+    });
+
+    // 5xx errors (server-side failures)
+    new aws.cloudwatch.MetricAlarm("Backend5xxAlarm", {
+      alarmName: `sentinel-${$app.stage}-5xx-errors`,
+      alarmDescription: "Backend returning 5xx errors",
+      namespace: "AWS/ApplicationELB",
+      metricName: "HTTPCode_Target_5XX_Count",
+      statistic: "Sum",
+      period: 300,
+      evaluationPeriods: 2,
+      threshold: 10,
+      comparisonOperator: "GreaterThanOrEqualToThreshold",
+      treatMissingData: "notBreaching",
+      dimensions: { LoadBalancer: albArnSuffix },
+      alarmActions: [snsAlarmTopic.arn],
+      okActions: [snsAlarmTopic.arn],
+    });
+
+    // 4xx errors (elevated client errors may indicate a problem)
+    new aws.cloudwatch.MetricAlarm("Backend4xxAlarm", {
+      alarmName: `sentinel-${$app.stage}-4xx-errors`,
+      alarmDescription: "Elevated 4xx client errors",
+      namespace: "AWS/ApplicationELB",
+      metricName: "HTTPCode_Target_4XX_Count",
+      statistic: "Sum",
+      period: 300,
+      evaluationPeriods: 3,
+      threshold: 50,
+      comparisonOperator: "GreaterThanOrEqualToThreshold",
+      treatMissingData: "notBreaching",
+      dimensions: { LoadBalancer: albArnSuffix },
+      alarmActions: [snsAlarmTopic.arn],
+      okActions: [snsAlarmTopic.arn],
+    });
+
+    // ECS health check failures (no healthy tasks running)
+    new aws.cloudwatch.MetricAlarm("EcsHealthAlarm", {
+      alarmName: `sentinel-${$app.stage}-ecs-unhealthy`,
+      alarmDescription: "No healthy ELB targets — health checks failing",
+      namespace: "AWS/ApplicationELB",
+      metricName: "HealthyHostCount",
+      statistic: "Minimum",
+      period: 60,
+      evaluationPeriods: 3,
+      threshold: 1,
+      comparisonOperator: "LessThanThreshold",
+      treatMissingData: "breaching",
+      dimensions: { LoadBalancer: albArnSuffix },
+      alarmActions: [snsAlarmTopic.arn],
+      okActions: [snsAlarmTopic.arn],
+    });
+
+    // CloudWatch Dashboard
+    const dashboardBody = $resolve([albArnSuffix, ecsClusterName, region]).apply(
+      ([alb, ecs, reg]) =>
+        JSON.stringify({
+          widgets: [
+            {
+              type: "metric",
+              x: 0,
+              y: 0,
+              width: 12,
+              height: 6,
+              properties: {
+                title: "HTTP 5xx / 4xx Errors",
+                region: reg,
+                metrics: [
+                  [
+                    "AWS/ApplicationELB",
+                    "HTTPCode_Target_5XX_Count",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "Sum", color: "#d62728", label: "5xx" },
+                  ],
+                  [
+                    "AWS/ApplicationELB",
+                    "HTTPCode_Target_4XX_Count",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "Sum", color: "#ff7f0e", label: "4xx" },
+                  ],
+                ],
+                period: 300,
+                view: "timeSeries",
+                stacked: false,
+              },
+            },
+            {
+              type: "metric",
+              x: 12,
+              y: 0,
+              width: 12,
+              height: 6,
+              properties: {
+                title: "Request Count",
+                region: reg,
+                metrics: [
+                  [
+                    "AWS/ApplicationELB",
+                    "RequestCount",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "Sum", label: "Requests" },
+                  ],
+                ],
+                period: 300,
+                view: "timeSeries",
+              },
+            },
+            {
+              type: "metric",
+              x: 0,
+              y: 6,
+              width: 12,
+              height: 6,
+              properties: {
+                title: "Response Time (p99 / avg)",
+                region: reg,
+                metrics: [
+                  [
+                    "AWS/ApplicationELB",
+                    "TargetResponseTime",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "p99", label: "p99" },
+                  ],
+                  [
+                    "AWS/ApplicationELB",
+                    "TargetResponseTime",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "Average", label: "avg" },
+                  ],
+                ],
+                period: 300,
+                view: "timeSeries",
+              },
+            },
+            {
+              type: "metric",
+              x: 12,
+              y: 6,
+              width: 12,
+              height: 6,
+              properties: {
+                title: "Healthy / Unhealthy Targets",
+                region: reg,
+                metrics: [
+                  [
+                    "AWS/ApplicationELB",
+                    "HealthyHostCount",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "Average", color: "#2ca02c", label: "Healthy" },
+                  ],
+                  [
+                    "AWS/ApplicationELB",
+                    "UnHealthyHostCount",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "Average", color: "#d62728", label: "Unhealthy" },
+                  ],
+                ],
+                period: 60,
+                view: "timeSeries",
+              },
+            },
+            {
+              type: "metric",
+              x: 0,
+              y: 12,
+              width: 12,
+              height: 6,
+              properties: {
+                title: "ECS CPU Utilization",
+                region: reg,
+                metrics: [
+                  [
+                    "AWS/ECS",
+                    "CPUUtilization",
+                    "ClusterName",
+                    ecs,
+                    { stat: "Average", label: "CPU %" },
+                  ],
+                ],
+                period: 300,
+                view: "timeSeries",
+              },
+            },
+            {
+              type: "metric",
+              x: 12,
+              y: 12,
+              width: 12,
+              height: 6,
+              properties: {
+                title: "ECS Memory Utilization",
+                region: reg,
+                metrics: [
+                  [
+                    "AWS/ECS",
+                    "MemoryUtilization",
+                    "ClusterName",
+                    ecs,
+                    { stat: "Average", label: "Memory %" },
+                  ],
+                ],
+                period: 300,
+                view: "timeSeries",
+              },
+            },
+          ],
+        }),
+    );
+
+    new aws.cloudwatch.Dashboard("SentinelDashboard", {
+      dashboardName: `sentinel-${$app.stage}`,
+      dashboardBody,
+    });
+
     // Frontend (static site on CloudFront, DNS via Cloudflare)
     // Note: sst.cloudflare.StaticSite has a "Could not resolve sst" bug in SST 4.5.12
     const frontend = new sst.aws.StaticSite("SentinelFrontend", {
