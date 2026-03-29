@@ -43,8 +43,7 @@ async fn run_stream(
     let request = SubscribeCheckpointsRequest {
         read_mask: Some(prost_types::FieldMask {
             paths: vec![
-                "checkpoint.transactions.events".into(),
-                "checkpoint.transactions.effects".into(),
+                "checkpoint.transactions".into(),
             ],
         }),
     };

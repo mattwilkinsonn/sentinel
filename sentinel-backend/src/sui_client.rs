@@ -39,8 +39,8 @@ pub async fn get_checkpoint(
             checkpoint_id: Some(sui_rpc::get_checkpoint_request::CheckpointId::SequenceNumber(seq)),
             read_mask: Some(prost_types::FieldMask {
                 paths: vec![
-                    "checkpoint.transactions.events".into(),
-                    "checkpoint.transactions.effects".into(),
+                    "summary".into(),
+                    "transactions".into(),
                 ],
             }),
         })
