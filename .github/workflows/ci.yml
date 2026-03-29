@@ -71,6 +71,12 @@ jobs:
       - name: Unit tests
         run: cd sentinel-backend && cargo test --lib
 
+      - name: Mock tests (gRPC + GraphQL)
+        run: cd sentinel-backend && cargo test --test grpc_mock_tests --test graphql_mock_tests
+
+      - name: Live tests (gRPC + GraphQL against Sui testnet)
+        run: cd sentinel-backend && cargo test --test grpc_integration_tests --test graphql_integration_tests -- --ignored
+
       - name: Integration tests
         run: cd sentinel-backend && cargo test --test db_integration
 
