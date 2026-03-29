@@ -3,8 +3,10 @@ import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 import tailwindcss from "@tailwindcss/vite";
 
+const isTest = process.env.NODE_ENV === "test" || process.env.VITEST;
+
 export default defineConfig({
-  plugins: [solid(), tailwindcss()],
+  plugins: [solid({ dev: !isTest, hot: !isTest }), tailwindcss()],
   server: {
     proxy: {
       "/api": {
@@ -14,8 +16,10 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
+    environment: "happy-dom",
     globals: true,
+    isolate: false,
+    pool: "vmThreads",
     deps: {
       optimizer: {
         web: {

@@ -1,3 +1,4 @@
+// Tests for SentinelFeed: the live event sidebar that formats and displays kill/jump/bounty events
 import { render, screen } from "@solidjs/testing-library";
 import { describe, expect, it } from "vitest";
 import { SentinelFeed } from "../SentinelFeed";
@@ -108,6 +109,7 @@ describe("SentinelFeed", () => {
   });
 
   it("falls back to Pilot # for unknown characters", () => {
+    // Character ID 999 is not in mockProfiles, so the display falls back to "Pilot #999"
     const events: RawEvent[] = [
       {
         event_type: "kill",

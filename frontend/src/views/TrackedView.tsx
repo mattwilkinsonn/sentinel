@@ -4,13 +4,23 @@ import type { ThreatProfile } from "../types";
 import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
 
 type TrackedViewProps = {
+  /** All tracked profiles, unsorted. */
   profiles: ThreatProfile[];
+  /** Count of `character_registered` events in the last 24 hours; shown in the "New Pilots" button badge. */
   newPilotCount: number;
+  /** Called when a pilot row is clicked; typically highlights the character in another view. */
   onSelect: (id: number) => void;
+  /** Navigates to the PilotsView sub-view when the "New Pilots" button is clicked. */
   onViewPilots: () => void;
   loading?: boolean;
 };
 
+/**
+ * Full list of tracked pilots with a tier-breakdown summary grid at the top.
+ * "Active" pilots are those with a kill or death in the last 7 days, any kills,
+ * any deaths, or any active bounties — purely dormant scouts are excluded.
+ * The list is sorted by threat score descending.
+ */
 export function TrackedView(props: TrackedViewProps) {
   const sevenDaysAgo = () => Date.now() - 7 * 86_400_000;
 

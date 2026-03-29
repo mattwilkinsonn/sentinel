@@ -23,6 +23,9 @@ infrastructure/.sst/
 .env
 .env.local
 
+# Sui key files
+*.key
+
 # Local notes
 *.local.md
 

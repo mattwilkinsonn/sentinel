@@ -49,12 +49,18 @@ Deadline: March 31, 2026 23:59 UTC
 - [ ] **Add Claude development section to README** — document AI-assisted
       development process with example prompts showing human direction
       of architecture, design decisions, and technical corrections.
-- [ ] **Discord bot** — TS bot (discord.js) that polls /api/data.
-      Commands: `/threat <pilot>`, `/leaderboard`, `/alerts`.
+- [ ] **Discord bot** — Rust module in sentinel-backend (serenity,
+      feature-gated). Reads shared AppState directly, SSE alerts.
+      MVP commands: `/threat <pilot>`, `/leaderboard`, `/alerts`.
+      Future commands: `/search <name>`, `/kills` (recent kills feed),
+      `/systems` (active systems), `/events` (live event feed),
+      `/stats` (aggregate dashboard stats), `/pilot <id>` (by ID).
       ~2 hours. Judges love seeing integrations.
 - [ ] **Demo video** — clear walkthrough: live events flowing,
       scoring, dashboard, threat tiers, titles, on-chain registry,
       gate blocking. Directly affects "Visual Presentation" criterion.
+- [ ] Events 24H shows 1000 events max. Increase max and show + if we're
+      at the cap. Doesn't need to show how many actual events the frontend has.
 
 ## Medium priority
 
@@ -97,7 +103,21 @@ Deadline: March 31, 2026 23:59 UTC
 - [ ] **Alt detection** — behavioral fingerprint comparison.
 - [ ] **Webhook/alert system** — Discord webhooks for kills,
       bounties, gate blocks.
+- [ ] **Migrate infra to raw Pulumi** — SST abstractions are too
+      restrictive (can't rename AWS resources, Cloudflare StaticSite
+      bug, opaque resource naming). Switch to direct Pulumi TS with
+      full control over ECS, ALB, CloudFront, Neon resources.
 - [ ] **Migrate to SolidStart** — SSR, file-based routing.
+- [ ] **Evaluate Nx for monorepo** — remote caching (Nx Cloud free tier)
+      would eliminate redundant CI builds; `nx affected` skips unrelated
+      packages. Low value at 2 packages but scales well if SolidStart
+      migration introduces shared packages (UI lib, shared types, etc.).
+      Evaluate alongside SolidStart — natural fit together.
+- [ ] **Revisit test setup post-SolidStart** — currently Vitest + Babel
+      (8s for 5 files, 210ms actual tests). SolidStart/Vinxi is Vite-based
+      so Vitest stays natural; evaluate SWC support or transform caching
+      improvements at that point. Don't migrate to `bun test` before
+      SolidStart — would create friction during that migration.
 - [ ] **Distinguish turret kills from PvP** — if `killer_id` is not
       in Character objects, it's a turret/structure. Use `reported_by`
       field to attribute kills to structure owners.

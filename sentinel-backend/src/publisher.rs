@@ -27,14 +27,35 @@ struct ThreatEntryKey {
 }
 
 /// BCS-deserializable value for ThreatRegistry dynamic fields.
+/// All fields from ThreatEntry must be present: bcs::from_bytes fails on trailing
+/// bytes, so a partial struct would cause silent deserialization failure every cycle,
+/// leaving onchain_scores empty and republishing all profiles on every tick.
 #[derive(serde::Deserialize)]
 struct ThreatEntryValue {
     #[allow(dead_code)]
     character_item_id: u64,
     threat_score: u64,
-    // remaining fields not needed for score comparison
+    #[allow(dead_code)]
+    kill_count: u64,
+    #[allow(dead_code)]
+    death_count: u64,
+    #[allow(dead_code)]
+    bounty_count: u64,
+    #[allow(dead_code)]
+    last_kill_timestamp: u64,
+    #[allow(dead_code)]
+    last_seen_system: String,
+    #[allow(dead_code)]
+    updated_at: u64,
 }
 
+/// Background loop that periodically publishes threat score changes to the ThreatRegistry on-chain.
+///
+/// On startup, fetches the current on-chain scores once to seed `published_scores`.
+/// Each subsequent cycle compares in-memory profiles against that local cache — no
+/// per-cycle chain reads. The cache is updated after every successful publish batch.
+///
+/// Exits early if required config is missing. Uses exponential backoff on consecutive failures.
 pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
     let interval = std::time::Duration::from_millis(config.publish_interval_ms);
 
@@ -43,8 +64,8 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         return;
     }
 
-    if config.admin_private_key.is_empty() {
-        tracing::warn!("ADMIN_PRIVATE_KEY not set — publisher disabled");
+    if config.publisher_private_key.is_empty() {
+        tracing::warn!("SUI_PUBLISHER_KEY not set — publisher disabled");
         return;
     }
 
@@ -54,18 +75,41 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         return;
     }
 
-    let (admin_key, sender) = match parse_sui_private_key(&config.admin_private_key) {
+    let (admin_key, sender) = match parse_sui_private_key(&config.publisher_private_key) {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!("Failed to parse ADMIN_PRIVATE_KEY: {e}");
+            tracing::error!("Failed to parse SUI_PUBLISHER_KEY: {e}");
             return;
         }
     };
 
-    tracing::info!(
-        "Publisher started — sender: {sender}, batch_update every {}ms",
-        config.publish_interval_ms
-    );
+    // Fetch current on-chain scores once at startup to seed the local cache.
+    // After this, we track published scores in-memory and only re-fetch on failure.
+    let mut published_scores: std::collections::HashMap<u64, u64> = {
+        match connect_grpc(&config.sui_grpc_url).await {
+            Ok(ch) => match fetch_onchain_scores(ch, &config.threat_registry_id).await {
+                Ok(scores) => {
+                    tracing::info!(
+                        "Publisher started — sender: {sender}, {} scores on-chain, \
+                             batch_update every {}ms",
+                        scores.len(),
+                        config.publish_interval_ms
+                    );
+                    scores
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Publisher: initial on-chain fetch failed ({e}), starting empty"
+                    );
+                    std::collections::HashMap::new()
+                }
+            },
+            Err(e) => {
+                tracing::warn!("Publisher: initial gRPC connect failed ({e}), starting empty");
+                std::collections::HashMap::new()
+            }
+        }
+    };
 
     let mut consecutive_failures: u32 = 0;
 
@@ -94,28 +138,25 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
             }
         };
 
-        // Fetch on-chain scores as the source of truth
-        let onchain_scores = match fetch_onchain_scores(
-            channel.clone(),
-            &config.threat_registry_id,
-        )
-        .await
-        {
-            Ok(scores) => {
-                tracing::debug!(
-                    "Publisher: fetched {} on-chain scores via gRPC",
-                    scores.len()
-                );
-                scores
+        // On repeated failures, re-sync from chain to avoid diverging from reality
+        if consecutive_failures > 0 {
+            match fetch_onchain_scores(channel.clone(), &config.threat_registry_id).await {
+                Ok(scores) => {
+                    tracing::info!(
+                        "Publisher: re-synced {} on-chain scores after failures",
+                        scores.len()
+                    );
+                    published_scores = scores;
+                }
+                Err(e) => {
+                    tracing::warn!("Publisher: re-sync fetch failed: {e}");
+                    consecutive_failures += 1;
+                    continue;
+                }
             }
-            Err(e) => {
-                tracing::warn!("Publisher: failed to fetch on-chain scores: {e}");
-                consecutive_failures += 1;
-                continue;
-            }
-        };
+        }
 
-        // Only publish profiles whose score differs from what's on-chain
+        // Compare in-memory profiles against local published_scores cache
         let publishable: Vec<_> = {
             let state = state.read().await;
             state
@@ -123,10 +164,16 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
                 .profiles
                 .values()
                 .filter(|p| {
-                    p.threat_score > 0
-                        && onchain_scores
-                            .get(&p.character_item_id)
-                            .map_or(true, |&onchain| onchain != p.threat_score)
+                    if p.threat_score == 0 {
+                        return false;
+                    }
+                    // New profile not on chain yet
+                    if !published_scores.contains_key(&p.character_item_id) {
+                        return true;
+                    }
+                    // Score changed by more than threshold
+                    let last = published_scores[&p.character_item_id];
+                    p.threat_score.abs_diff(last) > config.publish_score_threshold_bp
                 })
                 .cloned()
                 .collect()
@@ -138,11 +185,12 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         }
 
         tracing::info!(
-            "Publisher: {} profiles with score changes (on-chain check)",
+            "Publisher: {} profiles with score changes",
             publishable.len()
         );
 
         let mut batch_ok = true;
+        let mut cap_override: Option<(u64, Digest)> = None;
         for chunk in publishable.chunks(20) {
             match publish_batch(
                 &config,
@@ -150,12 +198,18 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
                 &admin_key,
                 sender,
                 &admin_cap_id,
+                cap_override,
                 chunk,
             )
             .await
             {
-                Ok(digest) => {
+                Ok((digest, new_cap)) => {
                     tracing::info!("Published {} threat scores — tx: {digest}", chunk.len());
+                    // Update local cache so we don't re-publish next cycle
+                    for p in chunk {
+                        published_scores.insert(p.character_item_id, p.threat_score);
+                    }
+                    cap_override = new_cap;
                 }
                 Err(e) => {
                     tracing::error!("Failed to publish batch: {e}");
@@ -173,9 +227,8 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
     }
 }
 
-async fn connect_grpc(
-    url: &str,
-) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
+/// Connect a TLS gRPC channel to the Sui fullnode URL.
+async fn connect_grpc(url: &str) -> Result<Channel, Box<dyn std::error::Error + Send + Sync>> {
     let channel = Channel::from_shared(url.to_string())?
         .tls_config(tonic::transport::ClientTlsConfig::new().with_webpki_roots())?
         .connect()
@@ -339,11 +392,7 @@ async fn get_gas_coin(
             page_size: Some(1),
             page_token: None,
             read_mask: Some(prost_types::FieldMask {
-                paths: vec![
-                    "object_id".into(),
-                    "version".into(),
-                    "digest".into(),
-                ],
+                paths: vec!["object_id".into(), "version".into(), "digest".into()],
             }),
             object_type: Some("0x2::coin::Coin<0x2::sui::SUI>".to_string()),
         })
@@ -371,14 +420,21 @@ async fn get_gas_coin(
     Ok((id, version, digest))
 }
 
+/// Build and execute a `threat_registry::batch_update` PTB for up to 20 profiles.
+///
+/// Returns the transaction digest and the updated AdminCap reference (version + digest),
+/// which can be passed as `cap_override` to the next batch to avoid re-resolving it via
+/// gRPC between chunks. Simulates the transaction first so failures surface a useful error
+/// message rather than a raw execution abort.
 async fn publish_batch(
     config: &AppConfig,
     channel: Channel,
     admin_key: &Ed25519PrivateKey,
     sender: Address,
     admin_cap_id: &str,
+    cap_override: Option<(u64, Digest)>,
     profiles: &[crate::types::ThreatProfile],
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Option<(u64, Digest)>), Box<dyn std::error::Error + Send + Sync>> {
     let package_id: Address = config.sentinel_package_id.parse()?;
     let registry_id: Address = config.threat_registry_id.parse()?;
     let cap_id: Address = admin_cap_id.parse()?;
@@ -387,7 +443,10 @@ async fn publish_batch(
     // Resolve live object references via gRPC
     let reg_initial_version =
         resolve_shared_initial_version(channel.clone(), &config.threat_registry_id).await?;
-    let (cap_version, cap_digest) = resolve_object(channel.clone(), admin_cap_id).await?;
+    let (cap_version, cap_digest) = match cap_override {
+        Some((v, d)) => (v, d),
+        None => resolve_object(channel.clone(), admin_cap_id).await?,
+    };
     let (gas_id, gas_version, gas_digest) =
         get_gas_coin(channel.clone(), &format!("{sender}")).await?;
 
@@ -524,7 +583,11 @@ async fn publish_batch(
             transaction: Some(grpc_tx),
             signatures: vec![grpc_sig],
             read_mask: Some(prost_types::FieldMask {
-                paths: vec!["digest".into(), "effects.status".into()],
+                paths: vec![
+                    "digest".into(),
+                    "effects.status".into(),
+                    "effects.changed_objects".into(),
+                ],
             }),
         })
         .await?
@@ -536,7 +599,8 @@ async fn publish_batch(
         .and_then(|t| t.digest.as_deref())
         .unwrap_or("unknown");
 
-    // Check execution status
+    // Check execution status and extract updated object versions
+    let mut new_cap: Option<(u64, Digest)> = None;
     if let Some(ref executed) = exec_response.transaction {
         if let Some(ref effects) = executed.effects {
             if let Some(ref status) = effects.status {
@@ -549,8 +613,31 @@ async fn publish_batch(
                     return Err(format!("Execute failed (tx={digest}): {err_msg}").into());
                 }
             }
+
+            let cap_id_normalized = admin_cap_id.trim_start_matches("0x").to_lowercase();
+            for obj in &effects.changed_objects {
+                if let Some(ref oid) = obj.object_id {
+                    if oid.trim_start_matches("0x").to_lowercase() == cap_id_normalized {
+                        if let (Some(v), Some(d)) =
+                            (obj.output_version, obj.output_digest.as_deref())
+                        {
+                            if let Ok(parsed) = d.parse::<Digest>() {
+                                new_cap = Some((v, parsed));
+                                tracing::debug!("AdminCap updated: v={v}");
+                            }
+                        }
+                    }
+                }
+            }
+
+            if new_cap.is_none() {
+                tracing::warn!(
+                    "Could not extract AdminCap from effects ({} changed_objects), will re-resolve next batch",
+                    effects.changed_objects.len()
+                );
+            }
         }
     }
 
-    Ok(digest.to_string())
+    Ok((digest.to_string(), new_cap))
 }

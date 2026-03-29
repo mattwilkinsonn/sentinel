@@ -1,6 +1,8 @@
+// Tests for pure utility functions in types.ts: threat tier classification and colour mapping
 import { describe, expect, it } from "vitest";
 import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
 
+// Verify exact boundary scores for each tier: LOW ≤2500, MODERATE 2501–5000, HIGH 5001–7500, CRITICAL >7500
 describe("getThreatTier", () => {
   it("returns LOW for 0", () => {
     expect(getThreatTier(0)).toBe("LOW");

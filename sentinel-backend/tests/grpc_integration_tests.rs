@@ -21,7 +21,10 @@ async fn real_get_service_info() {
     let height = sui_client::get_latest_checkpoint(channel).await.unwrap();
 
     // Testnet should have at least some checkpoints
-    assert!(height > 1000, "expected checkpoint height > 1000, got {height}");
+    assert!(
+        height > 1000,
+        "expected checkpoint height > 1000, got {height}"
+    );
     println!("Testnet latest checkpoint: {height}");
 }
 
@@ -31,15 +34,23 @@ async fn real_get_checkpoint() {
     let channel = testnet_channel().await;
 
     // Get latest height, then fetch a recent checkpoint (old ones get pruned)
-    let height = sui_client::get_latest_checkpoint(channel.clone()).await.unwrap();
+    let height = sui_client::get_latest_checkpoint(channel.clone())
+        .await
+        .unwrap();
     let target = height.saturating_sub(10);
 
     let mut client = sui_rpc::ledger_service_client::LedgerServiceClient::new(channel);
-    let resp = sui_client::get_checkpoint(&mut client, target).await.unwrap();
+    let resp = sui_client::get_checkpoint(&mut client, target)
+        .await
+        .unwrap();
 
     let cp = resp.checkpoint.expect("checkpoint should be present");
     // read_mask only requests summary + transactions, so sequence_number may be None
-    println!("Checkpoint {target}: {} transactions, summary: {:?}", cp.transactions.len(), cp.summary);
+    println!(
+        "Checkpoint {target}: {} transactions, summary: {:?}",
+        cp.transactions.len(),
+        cp.summary
+    );
 }
 
 #[tokio::test]
@@ -49,7 +60,9 @@ async fn real_get_object_clock() {
 
     // The Clock object (0x6) exists on every Sui network
     let clock_id = "0x0000000000000000000000000000000000000000000000000000000000000006";
-    let json = sui_client::get_object_json(channel, clock_id).await.unwrap();
+    let json = sui_client::get_object_json(channel, clock_id)
+        .await
+        .unwrap();
 
     // Clock object should have a timestamp_ms field
     println!("Clock object JSON: {json}");

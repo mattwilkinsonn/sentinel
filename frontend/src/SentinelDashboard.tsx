@@ -10,8 +10,14 @@ import { PilotsView } from "./views/PilotsView";
 import { SystemsView } from "./views/SystemsView";
 import { TrackedView } from "./views/TrackedView";
 
+/** Root for all API calls. Defaults to same-origin when `VITE_API_URL` is not set. */
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+/**
+ * Named sub-views within the Sentinel dashboard. The active view determines
+ * which content panel renders in the left column and which StatsBar tile is
+ * highlighted.
+ */
 export type SubView =
   | "leaderboard"
   | "tracked"
@@ -20,17 +26,26 @@ export type SubView =
   | "feed"
   | "pilots";
 
+/** The data payload for a single mode (demo or live) within the combined API response. */
 type ModeData = {
   threats: ThreatProfile[];
   events: RawEvent[];
+  /** `character_registered` events used to detect newly-seen pilots. */
   new_pilots: RawEvent[];
   stats: AggregateStats;
 };
 
+/**
+ * Top-level shape of the `/api/data` response. Both demo and live datasets are
+ * bundled together so the user can switch modes without a new network request.
+ * `names` and `systems` are shared lookup maps used by all event renderers.
+ */
 type CombinedData = {
   demo: ModeData;
   live: ModeData;
+  /** character_item_id (as string key) → resolved pilot name */
   names?: Record<string, string>;
+  /** system_id (as string key) → human-readable system name */
   systems?: Record<string, string>;
 };
 
@@ -42,6 +57,17 @@ const emptyStats: AggregateStats = {
   total_events: 0,
 };
 
+/**
+ * Top-level dashboard component for the Sentinel threat-intelligence view.
+ *
+ * Fetches `/api/data` on mount, then re-fetches every 10 seconds and on each
+ * SSE push from `/api/events/stream`. The `mode` prop selects between the
+ * `demo` and `live` slices of the combined response without re-fetching.
+ *
+ * Layout: StatsBar across the top, a switchable main content area on the left,
+ * and a fixed-height live-intel sidebar on the right (hidden when the feed view
+ * is active to avoid duplication).
+ */
 export function SentinelDashboard(props: { mode: "demo" | "live" }) {
   const [data, setData] = createSignal<CombinedData | null>(null);
   const [selectedCharacter, setSelectedCharacter] = createSignal<number | null>(
@@ -75,7 +101,7 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
     return current().events.filter((e) => {
       // Structure kills only need the killer resolved, not the victim
       const keysToCheck =
-        e.event_type === "structure_kill"
+        e.event_type === "structure_destroyed"
           ? ["killer_character_id"]
           : charIdKeys;
       const d = e.data as Record<string, unknown>;
@@ -94,6 +120,7 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
   const systemMap = () => data()?.systems ?? {};
   const stats = () => current().stats;
 
+  /** Loads the combined data bundle from the backend and updates all derived signals. */
   async function fetchData() {
     try {
       const res = await fetch(`${API_BASE}/api/data`);
@@ -130,10 +157,12 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
     onCleanup(() => source.close());
   });
 
+  /** Toggles expanded detail for a character: clicking the same ID deselects. */
   function handleSelectCharacter(id: number) {
     setSelectedCharacter(id === selectedCharacter() ? null : id);
   }
 
+  /** Switches to a sub-view and clears any character selection to prevent stale detail panels. */
   function handleStatClick(view: SubView) {
     setSubView(view);
     setSelectedCharacter(null);

@@ -4,7 +4,13 @@ import { BountyBoard } from "./BountyBoard";
 import { SentinelDashboard } from "./SentinelDashboard";
 import { Tooltip } from "./Tooltip";
 
+/** Top-level navigation tabs. */
 type Tab = "sentinel" | "bounty";
+/**
+ * Data source mode, toggled via the header button.
+ * - `demo`: pre-seeded simulated data served by the backend
+ * - `live`: real events streaming from the Sui blockchain
+ */
 type DataMode = "demo" | "live";
 
 export default function App() {

@@ -5,12 +5,21 @@ import type { AggregateStats, ThreatProfile } from "./types";
 
 type StatsBarProps = {
   stats: AggregateStats;
+  /** Full profile list; used to compute the "Active Threats" count (score > 2500). */
   profiles: ThreatProfile[];
+  /** Pre-counted number of new pilots in the last 24 hours (passed in from parent). */
   newPilotCount: number;
+  /** Highlights the tile whose `view` matches this value. */
   activeView: SubView;
+  /** Called with the target sub-view when any tile is clicked. */
   onStatClick: (view: SubView) => void;
 };
 
+/**
+ * Six-tile navigation bar displaying key aggregate metrics. Each tile is
+ * clickable and navigates to its associated sub-view; the currently active
+ * tile is highlighted with a cyan border. Tooltips explain each metric on hover.
+ */
 export function StatsBar(props: StatsBarProps) {
   const statItems = () => [
     {

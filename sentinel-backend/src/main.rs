@@ -2,6 +2,8 @@ mod api;
 mod config;
 mod db;
 mod demo;
+#[cfg(feature = "discord")]
+mod discord;
 mod google_rpc;
 mod grpc;
 mod historical;
@@ -25,21 +27,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::from_path("../.env").ok();
     dotenvy::dotenv().ok();
 
-    let pretty_logs =
-        atty::is(atty::Stream::Stdout) || std::env::var("LOG_FORMAT").as_deref() == Ok("pretty");
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("sentinel_backend=info,tower_http=info")),
-        )
-        .with_ansi(pretty_logs);
-    if pretty_logs {
-        subscriber.init();
-    } else {
-        subscriber.json().init();
-    }
-
     let config = AppConfig::from_env()?;
+
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            EnvFilter::new(format!(
+                "{},sentinel_backend={}",
+                config.crates_log_level, config.sentinel_log_level
+            ))
+        }))
+        .with_ansi(matches!(
+            config.log_format,
+            crate::config::LogFormat::Pretty
+        ));
+    match config.log_format {
+        crate::config::LogFormat::Pretty => subscriber.init(),
+        crate::config::LogFormat::Json => subscriber.json().init(),
+    }
     tracing::info!("SENTINEL starting — streaming from {}", config.sui_grpc_url);
 
     let (sse_tx, _) = tokio::sync::broadcast::channel::<String>(256);
@@ -64,7 +68,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db::load_into(&db_pool, &mut s.live).await?;
         let name_count = db::load_character_names(&db_pool, &mut s.live).await?;
         let gate_count = db::load_gate_names(&db_pool, &mut s.live).await?;
-        tracing::info!("Loaded {name_count} character names, {gate_count} gate names from DB cache");
+        let struct_count = db::load_structure_types(&db_pool, &mut s.live).await?;
+        tracing::info!(
+            "Loaded {name_count} character names, {gate_count} gate names, \
+             {struct_count} structure type mappings from DB cache"
+        );
         if let Some(cp) = db::load_checkpoint(&db_pool).await? {
             tracing::info!("Resuming from checkpoint {cp}");
             s.last_checkpoint = Some(cp);
@@ -84,8 +92,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hist_state = state.clone();
     let hist_config = config.clone();
     let hist_pool = db_pool.clone();
+    let hist_world = world_client.clone();
     tokio::spawn(async move {
-        historical::load_all(hist_config, hist_state, hist_pool).await;
+        historical::load_all(hist_config, hist_state, hist_pool, hist_world).await;
     });
 
     // gRPC checkpoint streamer (always running for live data)
@@ -109,10 +118,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         names::name_resolver_loop(names_config, names_state).await;
     });
 
+    // Discord bot (optional, requires --features discord + DISCORD_TOKEN)
+    #[cfg(feature = "discord")]
+    let dc_config = config.clone();
+    #[cfg(feature = "discord")]
+    if dc_config.discord_token.is_some() {
+        let dc_state = state.clone();
+        let dc_sse = sse_tx.clone();
+        let dc_pool = db_pool.clone();
+        tokio::spawn(async move {
+            discord::run_discord_bot(dc_config, dc_state, dc_sse, dc_pool).await;
+        });
+    }
+
     // Metadata resolver (system names + tribe affiliations via World API)
     let meta_state = state.clone();
     let meta_client = world_client.clone();
     let meta_pool = db_pool.clone();
+    let api_port = config.api_port;
     tokio::spawn(async move {
         world_api::metadata_resolver_loop(
             meta_client,
@@ -135,7 +158,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // HTTP API + SSE
     let app = api::router(state.clone(), sse_tx);
 
-    let addr = format!("0.0.0.0:{}", config.api_port);
+    let addr = format!("0.0.0.0:{api_port}");
     tracing::info!("API listening on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;

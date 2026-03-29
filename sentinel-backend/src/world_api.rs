@@ -20,6 +20,7 @@ pub struct TribeInfo {
 }
 
 impl WorldApiClient {
+    /// Create a new client, pre-loading the system and tribe caches from Postgres.
     pub async fn new(base_url: &str, pool: &PgPool) -> Self {
         let mut client = Self {
             http: reqwest::Client::new(),
@@ -113,6 +114,25 @@ impl WorldApiClient {
         // Cache miss as empty to avoid re-fetching
         self.system_cache
             .insert(system_id.to_string(), String::new());
+        None
+    }
+
+    /// Fetch a type name from the World API by type_id (e.g. 92279 → "Mini Turret").
+    /// Results are not persisted to DB — caller stores in DataStore.type_name_cache.
+    pub async fn fetch_type_name(&self, type_id: u64) -> Option<String> {
+        let url = format!("{}/v2/types/{}", self.base_url, type_id);
+        match self.http.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    return json
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                }
+            }
+            Ok(resp) => tracing::debug!("World API type {type_id}: status {}", resp.status()),
+            Err(e) => tracing::debug!("World API type {type_id} fetch failed: {e}"),
+        }
         None
     }
 
@@ -214,23 +234,36 @@ pub async fn metadata_resolver_loop(
 
         // Resolve system names via World REST API
         for system_id in &pending_systems {
-            let name = {
+            // If the stored value is already a human-readable name (non-numeric, e.g. "J-1042"
+            // stored incorrectly where a numeric ID should be), skip the API call and use it
+            // directly as the display name.
+            let name = if system_id.parse::<u64>().is_err() {
+                tracing::debug!(
+                    "system_id {system_id:?} is non-numeric, using as display name directly"
+                );
+                Some(system_id.clone())
+            } else {
                 let mut client = world_client.write().await;
                 client.fetch_system_name(system_id, &pool).await
             };
+            // fetch_system_name returns Some("") for known-bad IDs (cached 400/error).
+            // Fall back to the raw system ID so the profile stops being queued.
             if let Some(name) = name {
-                if !name.is_empty() {
-                    let mut s = state.write().await;
-                    s.live
-                        .system_name_cache
-                        .insert(system_id.clone(), name.clone());
-                    for profile in s.live.profiles.values_mut() {
-                        if profile.last_seen_system == *system_id
-                            && profile.last_seen_system_name.is_empty()
-                        {
-                            profile.last_seen_system_name = name.clone();
-                            profile.dirty = true;
-                        }
+                let display = if name.is_empty() {
+                    system_id.clone()
+                } else {
+                    name
+                };
+                let mut s = state.write().await;
+                s.live
+                    .system_name_cache
+                    .insert(system_id.clone(), display.clone());
+                for profile in s.live.profiles.values_mut() {
+                    if profile.last_seen_system == *system_id
+                        && profile.last_seen_system_name.is_empty()
+                    {
+                        profile.last_seen_system_name = display.clone();
+                        profile.dirty = true;
                     }
                 }
             }
@@ -260,15 +293,15 @@ pub async fn metadata_resolver_loop(
                 .live
                 .profiles
                 .values()
-                .filter(|p| p.name.starts_with("Pilot #"))
+                .filter(|p| p.name.is_none())
                 .map(|p| p.character_item_id)
                 .collect();
             for id in &unresolved {
                 if let Some(name) = s.live.name_cache.get(id) {
-                    if !name.starts_with("Pilot #") {
+                    if !name.is_empty() {
                         let name = name.clone();
                         if let Some(p) = s.live.profiles.get_mut(id) {
-                            p.name = name;
+                            p.name = Some(name);
                             p.dirty = true;
                         }
                     }
@@ -284,9 +317,7 @@ pub async fn metadata_resolver_loop(
             s.live
                 .profiles
                 .values()
-                .filter(|p| {
-                    p.name.starts_with("Pilot #") && !failed_names.contains(&p.character_item_id)
-                })
+                .filter(|p| p.name.is_none() && !failed_names.contains(&p.character_item_id))
                 .map(|p| p.character_item_id)
                 .take(50)
                 .collect()
@@ -299,19 +330,13 @@ pub async fn metadata_resolver_loop(
                 let s = state.read().await;
                 pending_names
                     .iter()
-                    .filter_map(|id| {
-                        s.live
-                            .object_id_cache
-                            .get(id)
-                            .map(|oid| (*id, oid.clone()))
-                    })
+                    .filter_map(|id| s.live.object_id_cache.get(id).map(|oid| (*id, oid.clone())))
                     .collect()
             };
 
             if !object_ids.is_empty() {
                 if let Ok(channel) = crate::sui_client::connect(&grpc_url).await {
-                    let oids: Vec<String> =
-                        object_ids.iter().map(|(_, oid)| oid.clone()).collect();
+                    let oids: Vec<String> = object_ids.iter().map(|(_, oid)| oid.clone()).collect();
                     match crate::sui_client::batch_get_objects_json(channel, &oids).await {
                         Ok(results) => {
                             let mut resolved = 0;
@@ -320,17 +345,15 @@ pub async fn metadata_resolver_loop(
                                 let item_id = json["key"]["item_id"]
                                     .as_str()
                                     .and_then(|v| v.parse::<u64>().ok());
-                                let name: Option<&str> = json["metadata"]["name"]
-                                    .as_str()
-                                    .filter(|n| !n.is_empty());
+                                let name: Option<&str> =
+                                    json["metadata"]["name"].as_str().filter(|n| !n.is_empty());
                                 if let (Some(id), Some(name)) = (item_id, name) {
                                     s.live.name_cache.insert(id, name.to_string());
                                     if let Some(p) = s.live.profiles.get_mut(&id) {
-                                        p.name = name.to_string();
+                                        p.name = Some(name.to_string());
                                         p.dirty = true;
                                     }
-                                    let _ =
-                                        crate::db::upsert_character_name(&pool, id, name).await;
+                                    let _ = crate::db::upsert_character_name(&pool, id, name).await;
                                     resolved += 1;
                                 }
                             }
@@ -347,15 +370,16 @@ pub async fn metadata_resolver_loop(
                 }
             }
 
-            // Mark unresolved names as failed so we don't retry endlessly
+            // Mark as failed only those we actually attempted (had an object ID for).
+            // Characters without object IDs are skipped here — they'll get an object ID
+            // once seen in the live stream and can be retried then.
+            let attempted: std::collections::HashSet<u64> =
+                object_ids.iter().map(|(id, _)| *id).collect();
             {
                 let s = state.read().await;
                 for id in &pending_names {
-                    if !s
-                        .live
-                        .name_cache
-                        .get(id)
-                        .is_some_and(|n| !n.starts_with("Pilot #"))
+                    if attempted.contains(id)
+                        && !s.live.name_cache.get(id).is_some_and(|n| !n.is_empty())
                     {
                         failed_names.insert(*id);
                     }
@@ -363,13 +387,31 @@ pub async fn metadata_resolver_loop(
             }
         }
 
-        if !pending_systems.is_empty() || !pending_tribes.is_empty() || !pending_names.is_empty() {
+        if !pending_systems.is_empty() || !pending_tribes.is_empty() {
             tracing::debug!(
-                "Metadata resolver: {} systems, {} tribes, {} names pending",
+                "Metadata resolver: {} systems, {} tribes pending",
                 pending_systems.len(),
                 pending_tribes.len(),
-                pending_names.len()
             );
+        }
+        // Names without a cached object ID can't be resolved yet — log at trace only
+        // to avoid noise. They'll be resolved when the live stream provides an object ID.
+        if !pending_names.is_empty() {
+            let with_oid = {
+                let s = state.read().await;
+                pending_names
+                    .iter()
+                    .filter(|id| s.live.object_id_cache.contains_key(*id))
+                    .count()
+            };
+            if with_oid > 0 {
+                tracing::debug!("{with_oid} names pending (have object IDs, retrying)");
+            } else {
+                tracing::trace!(
+                    "{} names pending (no object IDs yet, waiting for live stream)",
+                    pending_names.len()
+                );
+            }
         }
     }
 }

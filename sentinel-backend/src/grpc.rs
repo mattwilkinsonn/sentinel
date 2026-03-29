@@ -28,6 +28,8 @@ pub async fn stream_checkpoints(config: AppConfig, state: Arc<RwLock<AppState>>)
     }
 }
 
+/// Open a single gRPC checkpoint subscription and process events until the stream ends.
+/// Returns `Ok(())` on clean stream end (caller reconnects), or `Err` on transport failure.
 async fn run_stream(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
@@ -42,9 +44,7 @@ async fn run_stream(
     // Request checkpoint stream with events included
     let request = SubscribeCheckpointsRequest {
         read_mask: Some(prost_types::FieldMask {
-            paths: vec![
-                "checkpoint.transactions".into(),
-            ],
+            paths: vec!["checkpoint.transactions".into()],
         }),
     };
 
@@ -81,6 +81,9 @@ async fn run_stream(
     Ok(())
 }
 
+/// Process all events in a single live checkpoint.
+/// Gate names are pre-resolved via gRPC before acquiring the write lock, to keep lock
+/// hold time short. The first 20 events are sampled to debug package ID filtering.
 async fn process_checkpoint(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
@@ -280,6 +283,9 @@ pub fn process_checkpoint_events(
     }
 }
 
+/// Handle a KillMailCreatedEvent: credit the killer, record the victim's death, push a kill event.
+/// Structure kills (item_id >= STRUCTURE_ITEM_ID_MIN) are credited to the structure owner
+/// (reported_by_character_id) rather than the structure itself.
 fn handle_killmail(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
@@ -293,7 +299,8 @@ fn handle_killmail(
     let victim_id = json_item_id(json, "victim_id")
         .or_else(|| json_item_id(json, "victim_character_id"))
         .or_else(|| json_u64(json, "victimId"));
-    let is_structure_kill = json["loss_type"]["@variant"]
+    let reported_by_id = json_item_id(json, "reported_by_character_id");
+    let loss_is_structure = json["loss_type"]["@variant"]
         .as_str()
         .map(|v| v == "STRUCTURE")
         .unwrap_or(false);
@@ -302,7 +309,22 @@ fn handle_killmail(
         .unwrap_or_default();
     let system_name = resolve_system_name(state, &system);
 
-    if let Some(killer) = killer_id {
+    // A structure killed the player when the killer item_id is in the structure
+    // range (>= 1T). Credit the structure owner (reported_by_character_id) instead.
+    let killed_by_structure = !loss_is_structure
+        && killer_id
+            .map(|k| k >= crate::historical::STRUCTURE_ITEM_ID_MIN)
+            .unwrap_or(false);
+
+    let (credited_killer, structure_name) = if killed_by_structure {
+        let structure_item_id = killer_id.unwrap();
+        let name = state.resolve_structure_name(structure_item_id);
+        (reported_by_id.or(killer_id), Some(name))
+    } else {
+        (killer_id, None)
+    };
+
+    if let Some(killer) = credited_killer {
         let name = resolve_name(state, killer);
         let profile = state
             .profiles
@@ -322,7 +344,7 @@ fn handle_killmail(
     }
 
     if let Some(victim) = victim_id {
-        if !is_structure_kill {
+        if !loss_is_structure {
             let name = resolve_name(state, victim);
             let profile = state
                 .profiles
@@ -340,26 +362,33 @@ fn handle_killmail(
         }
     }
 
-    let event_type = if is_structure_kill {
-        "structure_kill"
+    let event_type = if loss_is_structure {
+        "structure_destroyed"
     } else {
         "kill"
     };
+
+    let mut data = serde_json::json!({
+        "killer_character_id": credited_killer,
+        "target_item_id": victim_id,
+        "solar_system_id": system,
+    });
+    if let Some(name) = structure_name {
+        data["killed_by_structure"] = serde_json::json!(true);
+        data["structure_name"] = serde_json::json!(name);
+    }
 
     state.push_event(
         RawEvent {
             event_type: event_type.into(),
             timestamp_ms,
-            data: serde_json::json!({
-                "killer_character_id": killer_id,
-                "target_item_id": victim_id,
-                "solar_system_id": system,
-            }),
+            data,
         },
         sse_tx,
     );
 }
 
+/// Handle a BountyPostedEvent: increment the target's bounty count and push the event.
 fn handle_bounty_posted(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
@@ -396,6 +425,8 @@ fn handle_bounty_posted(
     );
 }
 
+/// Handle a BountyCancelledEvent or ContributionWithdrawnEvent: decrement the bounty count
+/// (saturating at 0). Only modifies profiles that already exist; unknown targets are ignored.
 fn handle_bounty_removed(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
@@ -424,6 +455,8 @@ fn handle_bounty_removed(
     );
 }
 
+/// Handle a JumpEvent: update the character's last-seen system and increment systems_visited
+/// if this is a new system. Gate names are resolved from cache (pre-fetched before this call).
 fn handle_jump(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
@@ -496,6 +529,8 @@ fn handle_jump(
     );
 }
 
+/// Handle a CharacterCreatedEvent: insert a blank profile for the new character if one
+/// doesn't already exist, and push a `new_character` event.
 fn handle_character_created(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
@@ -509,7 +544,7 @@ fn handle_character_created(
     if let Some(id) = char_id {
         state.profiles.entry(id).or_insert_with(|| ThreatProfile {
             character_item_id: id,
-            name: format!("Pilot #{id}"),
+            name: None,
             ..Default::default()
         });
 
@@ -524,13 +559,9 @@ fn handle_character_created(
     }
 }
 
-/// Look up a cached name, or return a fallback.
-fn resolve_name(state: &crate::types::DataStore, character_item_id: u64) -> String {
-    state
-        .name_cache
-        .get(&character_item_id)
-        .cloned()
-        .unwrap_or_else(|| format!("Pilot #{character_item_id}"))
+/// Look up a cached name, or return None if not yet resolved.
+fn resolve_name(state: &crate::types::DataStore, character_item_id: u64) -> Option<String> {
+    state.name_cache.get(&character_item_id).cloned()
 }
 
 /// Look up a cached system name from the inline DataStore cache.
@@ -544,6 +575,7 @@ fn resolve_system_name(state: &crate::types::DataStore, system_id: &str) -> Stri
 
 // === JSON helpers ===
 
+/// Extract a u64 from a JSON field, accepting both number and numeric-string values.
 fn json_u64(v: &serde_json::Value, key: &str) -> Option<u64> {
     v.get(key).and_then(|v| {
         v.as_u64()
@@ -578,6 +610,7 @@ fn json_item_id_str(v: &serde_json::Value, key: &str) -> Option<String> {
     })
 }
 
+/// Extract a string value from a JSON field.
 fn json_str(v: &serde_json::Value, key: &str) -> Option<String> {
     v.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
 }
@@ -868,12 +901,12 @@ mod tests {
     fn resolve_name_uses_cache() {
         let mut store = empty_store();
         store.name_cache.insert(42, "Vex Nightburn".into());
-        assert_eq!(resolve_name(&store, 42), "Vex Nightburn");
+        assert_eq!(resolve_name(&store, 42), Some("Vex Nightburn".to_string()));
     }
 
     #[test]
     fn resolve_name_falls_back() {
         let store = empty_store();
-        assert_eq!(resolve_name(&store, 42), "Pilot #42");
+        assert_eq!(resolve_name(&store, 42), None);
     }
 }

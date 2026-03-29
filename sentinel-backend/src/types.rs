@@ -5,7 +5,7 @@ use std::collections::{HashMap, VecDeque};
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct ThreatProfile {
     pub character_item_id: u64,
-    pub name: String,
+    pub name: Option<String>,
     pub threat_score: u64,
     pub kill_count: u64,
     pub death_count: u64,
@@ -22,9 +22,6 @@ pub struct ThreatProfile {
     /// Whether this profile has been modified since last DB sync
     #[serde(skip)]
     pub dirty: bool,
-    /// Last score published on-chain (to avoid re-publishing unchanged scores)
-    #[serde(skip)]
-    pub published_score: u64,
 }
 
 /// A raw event captured from the checkpoint stream.
@@ -58,9 +55,28 @@ pub struct DataStore {
     pub object_id_cache: HashMap<u64, String>,
     /// Gate object ID → display name cache (populated via gRPC lookups)
     pub gate_name_cache: HashMap<String, String>,
+    /// structure item_id → type_id (persisted to DB, populated lazily on structure kills)
+    pub structure_type_cache: HashMap<u64, u64>,
+    /// type_id → human name (in-memory only, fetched from World API, e.g. 92279 → "Mini Turret")
+    pub type_name_cache: HashMap<u64, String>,
 }
 
 impl DataStore {
+    /// Resolve a structure's display name from its item_id.
+    /// Returns e.g. "Mini Turret", "Mini Gate", or "Structure" as fallback.
+    pub fn resolve_structure_name(&self, item_id: u64) -> String {
+        self.structure_type_cache
+            .get(&item_id)
+            .and_then(|type_id| self.type_name_cache.get(type_id))
+            .cloned()
+            .unwrap_or_else(|| "Structure".to_string())
+    }
+}
+
+impl DataStore {
+    /// Prepend an event to the front of the ring-buffer and broadcast it over SSE.
+    /// `new_character` events go into `new_pilot_events`; all others into `recent_events`.
+    /// Each deque is capped (1000 events / 500 pilots) to bound memory.
     pub fn push_event(
         &mut self,
         event: RawEvent,
@@ -84,6 +100,9 @@ impl DataStore {
         }
     }
 
+    /// Compute aggregate dashboard stats from the current profile + event set.
+    /// `total_events` counts only events from the last 24 hours.
+    /// `top_system` is the solar system ID or name where the most pilots were last seen.
     pub fn compute_stats(&self) -> AggregateStats {
         let total = self.profiles.len() as u64;
         let sum_score: u64 = self.profiles.values().map(|p| p.threat_score).sum();

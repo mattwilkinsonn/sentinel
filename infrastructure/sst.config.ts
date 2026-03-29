@@ -1,5 +1,18 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+// Backend runtime config — non-secret, non-chain values
+const BACKEND_CONFIG = {
+  apiPort: "3001",
+  publishIntervalMs: "30000",
+  publishThresholdBp: "100",
+  sentinelLogLevel: "info",
+  cratesLogLevel: "warn",
+  logFormat: "json",
+  suiGrpcUrl: "https://fullnode.testnet.sui.io:443",
+  suiGraphqlUrl: "https://sui-testnet.mystenlabs.com/graphql",
+  worldApiUrl: "https://world-api-stillness.live.tech.evefrontier.com",
+};
+
 // Public on-chain addresses (not secrets, change when contracts are redeployed)
 const CHAIN_IDS = {
   worldPackageId:
@@ -18,7 +31,6 @@ const CHAIN_IDS = {
 interface EnvConfig {
   imageTag: string;
   neonOrgId: string;
-  adminPrivateKey: string;
 }
 
 function loadEnv(): EnvConfig {
@@ -31,8 +43,15 @@ function loadEnv(): EnvConfig {
   return {
     imageTag: require("IMAGE_TAG"),
     neonOrgId: require("NEON_ORG_ID"),
-    adminPrivateKey: require("ADMIN_PRIVATE_KEY"),
   };
+}
+
+// SSM Parameter Store ARNs for secrets — stored manually, never in code or CI.
+// One-time setup:
+//   aws ssm put-parameter --name /sentinel/<stage>/sui-publisher-key --type SecureString --value <key>
+//   aws ssm put-parameter --name /sentinel/<stage>/discord-token --type SecureString --value <token>
+function ssmArn(stage: string, name: string): string {
+  return `arn:aws:ssm:us-east-1:${aws.getCallerIdentityOutput().accountId}:parameter/sentinel/${stage}/${name}`;
 }
 
 function domainForStage(stage: string): string {
@@ -115,16 +134,25 @@ export default $config({
         ],
       },
       environment: {
-        SENTINEL_API_PORT: "3001",
+        SENTINEL_API_PORT: BACKEND_CONFIG.apiPort,
+        SENTINEL_PUBLISH_INTERVAL_MS: BACKEND_CONFIG.publishIntervalMs,
+        SENTINEL_PUBLISH_THRESHOLD_BP: BACKEND_CONFIG.publishThresholdBp,
+        SENTINEL_LOG_LEVEL: BACKEND_CONFIG.sentinelLogLevel,
+        CRATES_LOG_LEVEL: BACKEND_CONFIG.cratesLogLevel,
+        LOG_FORMAT: BACKEND_CONFIG.logFormat,
+        SUI_GRPC_URL: BACKEND_CONFIG.suiGrpcUrl,
+        SUI_GRAPHQL_URL: BACKEND_CONFIG.suiGraphqlUrl,
+        WORLD_API_URL: BACKEND_CONFIG.worldApiUrl,
         SENTINEL_PACKAGE_ID: CHAIN_IDS.sentinelPackageId,
         THREAT_REGISTRY_ID: CHAIN_IDS.threatRegistryId,
         SENTINEL_ADMIN_CAP_ID: CHAIN_IDS.sentinelAdminCapId,
-        ADMIN_PRIVATE_KEY: env.adminPrivateKey,
         WORLD_PACKAGE_ID: CHAIN_IDS.worldPackageId,
         BUILDER_PACKAGE_ID: CHAIN_IDS.builderPackageId,
-        SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443",
-        SUI_GRAPHQL_URL: "https://sui-testnet.mystenlabs.com/graphql",
         DATABASE_URL: databaseUrl,
+      },
+      ssm: {
+        SUI_PUBLISHER_KEY: ssmArn($app.stage, "sui-publisher-key"),
+        DISCORD_TOKEN: ssmArn($app.stage, "discord-token"),
       },
     });
 

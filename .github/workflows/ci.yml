@@ -83,6 +83,22 @@ jobs:
       - name: Build release
         run: cd sentinel-backend && cargo build --release
 
+      - name: Smoke test (backend starts and serves health check)
+        run: |
+          cd sentinel-backend && ./target/release/sentinel-backend &
+          PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "Health check passed"
+              kill $PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend failed to start within 30s"
+          kill $PID 2>/dev/null
+          exit 1
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -108,10 +124,31 @@ jobs:
           context: sentinel-backend
           provenance: false
           push: true
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test (Docker container starts and serves health check)
+        run: |
+          docker run -d --name sentinel-smoke \
+            --network host \
+            -e DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel \
+            -e SENTINEL_API_PORT=3002 \
+            ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3002/api/health > /dev/null 2>&1; then
+              echo "Docker health check passed"
+              docker stop sentinel-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Docker container failed to start"
+          docker logs sentinel-smoke
+          docker stop sentinel-smoke
+          exit 1
 
   frontend:
     name: Solid.js Frontend

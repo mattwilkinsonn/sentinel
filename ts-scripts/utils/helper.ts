@@ -79,7 +79,7 @@ export function getEnvConfig(): EnvConfig {
   if (!packageId) {
     throw new Error("WORLD_PACKAGE_ID is required");
   }
-  const adminExportedKey = requireEnv("ADMIN_PRIVATE_KEY");
+  const adminExportedKey = requireEnv("SUI_PUBLISHER_KEY");
 
   return {
     network,

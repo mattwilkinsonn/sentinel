@@ -215,32 +215,6 @@ async fn start_mock_state(svc: MockStateService) -> Channel {
         .unwrap()
 }
 
-async fn start_combined_server(
-    ledger: MockLedgerService,
-    state: MockStateService,
-) -> Channel {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr: SocketAddr = listener.local_addr().unwrap();
-
-    tokio::spawn(async move {
-        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
-        Server::builder()
-            .add_service(LedgerServiceServer::new(ledger))
-            .add_service(StateServiceServer::new(state))
-            .serve_with_incoming(incoming)
-            .await
-            .unwrap();
-    });
-
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    Channel::from_shared(format!("http://{addr}"))
-        .unwrap()
-        .connect()
-        .await
-        .unwrap()
-}
-
 fn make_json_proto_value(json: &serde_json::Value) -> prost_types::Value {
     json_to_proto(json)
 }
@@ -256,7 +230,10 @@ fn json_to_proto(v: &serde_json::Value) -> prost_types::Value {
             values: arr.iter().map(json_to_proto).collect(),
         }),
         serde_json::Value::Object(map) => Kind::StructValue(prost_types::Struct {
-            fields: map.iter().map(|(k, v)| (k.clone(), json_to_proto(v))).collect(),
+            fields: map
+                .iter()
+                .map(|(k, v)| (k.clone(), json_to_proto(v)))
+                .collect(),
         }),
     };
     prost_types::Value { kind: Some(kind) }
@@ -467,13 +444,19 @@ async fn process_checkpoint_events_handles_killmail() {
         sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
-        admin_private_key: String::new(),
+        publisher_private_key: String::new(),
         world_package_id: "0xworld".into(),
         bounty_board_package_id: "0xbounty".into(),
         publish_interval_ms: 30_000,
+        publish_score_threshold_bp: 100,
         api_port: 3001,
         database_url: "unused".into(),
         world_api_url: "unused".into(),
+        sentinel_log_level: tracing::Level::INFO,
+        crates_log_level: tracing::Level::WARN,
+        log_format: sentinel_backend::config::LogFormat::Pretty,
+        #[cfg(feature = "discord")]
+        discord_token: None,
     };
 
     let kill_event_json = serde_json::json!({
@@ -537,13 +520,19 @@ async fn process_checkpoint_events_handles_character_created() {
         sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
-        admin_private_key: String::new(),
+        publisher_private_key: String::new(),
         world_package_id: "0xworld".into(),
         bounty_board_package_id: "0xbounty".into(),
         publish_interval_ms: 30_000,
+        publish_score_threshold_bp: 100,
         api_port: 3001,
         database_url: "unused".into(),
         world_api_url: "unused".into(),
+        sentinel_log_level: tracing::Level::INFO,
+        crates_log_level: tracing::Level::WARN,
+        log_format: sentinel_backend::config::LogFormat::Pretty,
+        #[cfg(feature = "discord")]
+        discord_token: None,
     };
 
     let event_json = serde_json::json!({
@@ -587,7 +576,7 @@ async fn process_checkpoint_events_handles_character_created() {
     );
 
     assert!(store.profiles.contains_key(&42));
-    assert_eq!(store.profiles.get(&42).unwrap().name, "Pilot #42");
+    assert!(store.profiles.get(&42).unwrap().name.is_none());
     assert_eq!(store.new_pilot_events.len(), 1);
     assert_eq!(store.new_pilot_events[0].event_type, "new_character");
 }
@@ -599,13 +588,19 @@ async fn process_checkpoint_events_filters_wrong_package() {
         sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
-        admin_private_key: String::new(),
+        publisher_private_key: String::new(),
         world_package_id: "0xworld".into(),
         bounty_board_package_id: "0xbounty".into(),
         publish_interval_ms: 30_000,
+        publish_score_threshold_bp: 100,
         api_port: 3001,
         database_url: "unused".into(),
         world_api_url: "unused".into(),
+        sentinel_log_level: tracing::Level::INFO,
+        crates_log_level: tracing::Level::WARN,
+        log_format: sentinel_backend::config::LogFormat::Pretty,
+        #[cfg(feature = "discord")]
+        discord_token: None,
     };
 
     let checkpoint = sui_rpc::Checkpoint {
@@ -643,13 +638,19 @@ async fn checkpoint_replay_processes_events_across_checkpoints() {
         sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
-        admin_private_key: String::new(),
+        publisher_private_key: String::new(),
         world_package_id: "0xworld".into(),
         bounty_board_package_id: "0xbounty".into(),
         publish_interval_ms: 30_000,
+        publish_score_threshold_bp: 100,
         api_port: 3001,
         database_url: "unused".into(),
         world_api_url: "unused".into(),
+        sentinel_log_level: tracing::Level::INFO,
+        crates_log_level: tracing::Level::WARN,
+        log_format: sentinel_backend::config::LogFormat::Pretty,
+        #[cfg(feature = "discord")]
+        discord_token: None,
     };
 
     // Create 3 checkpoints with events
@@ -677,9 +678,7 @@ async fn checkpoint_replay_processes_events_across_checkpoints() {
                         events: vec![sui_rpc::Event {
                             package_id: Some("0xworld".into()),
                             module: Some("killmail".into()),
-                            event_type: Some(
-                                "0xworld::killmail::KillMailCreatedEvent".into(),
-                            ),
+                            event_type: Some("0xworld::killmail::KillMailCreatedEvent".into()),
                             json: Some(make_json_proto_value(&kill_json)),
                             ..Default::default()
                         }],
@@ -717,9 +716,7 @@ async fn checkpoint_replay_processes_events_across_checkpoints() {
         if let Some(ref cp) = resp.checkpoint {
             let ts = sentinel_backend::grpc::checkpoint_timestamp_ms(cp);
             let mut s = state.write().await;
-            sentinel_backend::grpc::process_checkpoint_events(
-                &config, &mut s.live, &None, cp, ts,
-            );
+            sentinel_backend::grpc::process_checkpoint_events(&config, &mut s.live, &None, cp, ts);
         }
     }
 
@@ -771,12 +768,8 @@ async fn resolve_gate_name_uses_cache() {
     // Channel won't be used — cache hit. Use a mock server channel to satisfy types.
     let svc = MockLedgerService::default();
     let channel = start_mock_ledger(svc).await;
-    let name = sentinel_backend::historical::resolve_gate_name(
-        channel,
-        "0xgate1",
-        &mut cache,
-    )
-    .await;
+    let name =
+        sentinel_backend::historical::resolve_gate_name(channel, "0xgate1", &mut cache).await;
 
     assert_eq!(name, "Cached Gate");
 }

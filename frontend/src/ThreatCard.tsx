@@ -4,19 +4,27 @@ import { getThreatColor, getThreatColorClass, getThreatTier } from "./types";
 
 type ThreatCardProps = {
   profile: ThreatProfile;
+  /** Called when the user clicks the ✕ button; typically deselects the character. */
   onClose: () => void;
 };
 
+/**
+ * Expanded detail card for a single threat profile. Shows tier badge, a
+ * progress bar scaled to 100 (score / 100 = percentage), a 6-stat grid, and
+ * last-seen system. Used both standalone and inline within the leaderboard.
+ */
 export function ThreatCard(props: ThreatCardProps) {
   const tier = () => getThreatTier(props.profile.threat_score);
   const color = () => getThreatColor(tier());
   const colorClass = () => getThreatColorClass(tier());
+  // Convert internal ×100 integer to the 0–100 display range.
   const scoreDisplay = () => (props.profile.threat_score / 100).toFixed(2);
   const kd = () =>
     props.profile.death_count > 0
       ? (props.profile.kill_count / props.profile.death_count).toFixed(2)
       : props.profile.kill_count.toFixed(2);
 
+  // Human-readable relative time for the most recent kill, recomputed on each render.
   const lastKillAgo = () => {
     if (!props.profile.last_kill_timestamp) return "Never";
     const diff = Date.now() - props.profile.last_kill_timestamp;

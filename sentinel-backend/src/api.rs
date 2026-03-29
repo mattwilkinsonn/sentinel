@@ -22,6 +22,8 @@ use crate::types::AppState;
 
 type SharedState = Arc<RwLock<AppState>>;
 
+/// Build the Axum router. Mounts `/api/data`, `/api/events/stream`, and `/api/health`.
+/// CORS is permissive — the frontend and backend run on different origins in all environments.
 pub fn router(state: SharedState, sse_tx: tokio::sync::broadcast::Sender<String>) -> Router {
     Router::new()
         .route("/api/data", get(get_combined_data))
@@ -68,13 +70,13 @@ async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoRespon
         .live
         .profiles
         .values()
-        .map(|p| (p.character_item_id, p.name.as_str()))
+        .filter_map(|p| p.name.as_deref().map(|n| (p.character_item_id, n)))
         .chain(
             state
                 .demo
                 .profiles
                 .values()
-                .map(|p| (p.character_item_id, p.name.as_str())),
+                .filter_map(|p| p.name.as_deref().map(|n| (p.character_item_id, n))),
         )
         .collect();
 
@@ -160,7 +162,7 @@ mod tests {
             1,
             ThreatProfile {
                 character_item_id: 1,
-                name: "Test Pilot".into(),
+                name: Some("Test Pilot".to_string()),
                 threat_score: 5000,
                 kill_count: 10,
                 ..Default::default()
@@ -170,7 +172,7 @@ mod tests {
             2,
             ThreatProfile {
                 character_item_id: 2,
-                name: "Live Pilot".into(),
+                name: Some("Live Pilot".to_string()),
                 threat_score: 3000,
                 ..Default::default()
             },

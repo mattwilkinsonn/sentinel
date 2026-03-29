@@ -9,11 +9,19 @@ import {
 } from "./types";
 
 type ThreatLeaderboardProps = {
+  /** Pre-sorted list of threat profiles (highest score first). Only the top 20 are rendered. */
   profiles: ThreatProfile[];
+  /** Called with the character's item ID when a row is clicked. */
   onSelect: (id: number) => void;
+  /** ID of the currently expanded row, or null if none. */
   selectedId: number | null;
 };
 
+/**
+ * Ranked list of up to 20 threat profiles. Each row is clickable; selecting a
+ * row expands an inline detail section that includes per-factor score breakdown
+ * bars and a stacked bar visualisation. CRITICAL-tier entries get a neon glow.
+ */
 export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
   const top20 = () => props.profiles.slice(0, 20);
 

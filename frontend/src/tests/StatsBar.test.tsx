@@ -1,3 +1,4 @@
+// Tests for StatsBar: the clickable stat card row shown above the main content area
 import { render, screen } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { StatsBar } from "../StatsBar";
@@ -63,7 +64,7 @@ describe("StatsBar", () => {
     ));
 
     expect(screen.getByText("42")).toBeTruthy();
-    // 1 profile with score 8500 > 2500 threshold
+    // "1" is the ACTIVE THREATS count — profiles with score above the minimum threshold (score 8500 > 2500)
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("18")).toBeTruthy();
     expect(screen.getByText("J-1042")).toBeTruthy();

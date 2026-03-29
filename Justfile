@@ -1,6 +1,7 @@
 # SENTINEL — EVE Frontier Threat Intelligence Network
 
 export PATH := env("HOME") / ".bun/bin:" + env("HOME") / ".local/bin:" + env("HOME") / ".cargo/bin:" + env("PATH")
+export DATABASE_URL := "postgresql://sentinel:sentinel@localhost/sentinel"
 
 # Default: list all recipes
 default:
@@ -48,7 +49,7 @@ backend-test:
 
 # Run backend integration tests (requires Postgres)
 backend-test-integration: db
-    cd sentinel-backend && DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel cargo test --test db_integration
+    cd sentinel-backend && cargo test --test db_integration
 
 # Run integration tests against real Sui testnet (gRPC + GraphQL)
 backend-test-live:
@@ -58,9 +59,13 @@ backend-test-live:
 backend-build:
     cd sentinel-backend && cargo build --release
 
-# Run backend service (watches for changes)
-backend-run:
+# Run backend service (watches for changes, starts Postgres if needed)
+backend-run: db
     cd sentinel-backend && cargo watch -x run
+
+# Run backend with Discord bot enabled (watches for changes, starts Postgres if needed)
+backend-run-discord: db
+    cd sentinel-backend && cargo watch -x 'run --features discord'
 
 # === Frontend ===
 
@@ -70,7 +75,9 @@ frontend-install:
 
 # Run frontend dev server (waits for backend if not ready)
 frontend-dev:
+    @echo "Waiting for backend on :3001..."
     @until curl -sf http://localhost:3001/api/health > /dev/null 2>&1; do sleep 1; done
+    @echo "Backend ready — starting frontend dev server..."
     cd frontend && bun run dev
 
 # Build frontend for production
@@ -168,9 +175,9 @@ db-reset:
     docker compose up postgres -d
 
 # Run backend + frontend dev servers (starts Postgres automatically)
-dev: db
+dev:
     @echo "Starting backend on :3001 and frontend on :5173..."
-    @DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel just backend-run &
+    @just backend-run &
     @echo "Waiting for backend..."
     @until curl -sf http://localhost:3001/api/health > /dev/null 2>&1; do sleep 1; done
     @echo "Backend ready!"
