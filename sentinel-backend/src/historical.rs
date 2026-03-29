@@ -87,7 +87,7 @@ fn extract_item_id_str(v: &serde_json::Value) -> String {
 }
 
 /// Load historical killmails from Sui GraphQL and seed live profiles.
-async fn load_historical_killmails(
+pub async fn load_historical_killmails(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
 ) -> Result<usize, Box<dyn std::error::Error>> {
@@ -272,7 +272,7 @@ async fn load_historical_killmails(
 }
 
 /// Load historical character creation events from Sui GraphQL.
-async fn load_character_events(
+pub async fn load_character_events(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
 ) -> Result<usize, Box<dyn std::error::Error>> {
@@ -384,7 +384,7 @@ async fn load_character_events(
 }
 
 /// Load historical jump events from Sui GraphQL.
-async fn load_jump_events(
+pub async fn load_jump_events(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
 ) -> Result<usize, Box<dyn std::error::Error>> {
@@ -527,7 +527,7 @@ async fn load_jump_events(
 }
 
 /// Load character names from Sui GraphQL (indexed object scan).
-async fn load_character_names_graphql(
+pub async fn load_character_names_graphql(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
     pool: &sqlx::PgPool,
