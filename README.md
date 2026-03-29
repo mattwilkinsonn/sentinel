@@ -1,5 +1,7 @@
 # SENTINEL
 
+[![CI](https://github.com/mattwilkinsonn/sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/mattwilkinsonn/sentinel/actions/workflows/ci.yml)
+
 Decentralized threat intelligence network for
 [EVE Frontier](https://evefrontier.com) on
 [Sui](https://sui.io).

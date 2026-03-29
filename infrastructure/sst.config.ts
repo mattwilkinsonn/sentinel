@@ -82,8 +82,8 @@ export default $config({
     const databaseUrl = $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${db.databaseHost}/${dbName.name}?sslmode=require`;
 
     // VPC + ECS Cluster
-    const vpc = new sst.aws.Vpc("SentinelVpc");
-    const cluster = new sst.aws.Cluster("SentinelCluster", { vpc });
+    const vpc = new sst.aws.Vpc("Sentinel");
+    const cluster = new sst.aws.Cluster("Sentinel", { vpc });
 
     // Backend service (ECS Fargate)
     const backend = new sst.aws.Service("SentinelBackend", {
