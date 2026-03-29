@@ -133,6 +133,7 @@ export default $config({
     const region = aws.getRegionOutput().name;
     const albArnSuffix = backend.nodes.loadBalancer.arnSuffix;
     const ecsClusterName = cluster.nodes.cluster.name;
+    const ecsServiceName = backend.nodes.service.name;
 
     const snsAlarmTopic = new aws.sns.Topic("SentinelAlarmTopic", {
       name: `sentinel-${$app.stage}-alarms`,
@@ -172,26 +173,30 @@ export default $config({
       okActions: [snsAlarmTopic.arn],
     });
 
-    // ECS health check failures (no healthy tasks running)
-    new aws.cloudwatch.MetricAlarm("EcsHealthAlarm", {
-      alarmName: `sentinel-${$app.stage}-ecs-unhealthy`,
-      alarmDescription: "No healthy ELB targets — health checks failing",
+    // ALB 5xx (ALB itself returning errors — targets unreachable or crashing)
+    new aws.cloudwatch.MetricAlarm("AlbErrorAlarm", {
+      alarmName: `sentinel-${$app.stage}-alb-5xx`,
+      alarmDescription: "ALB returning 5xx — targets may be down",
       namespace: "AWS/ApplicationELB",
-      metricName: "HealthyHostCount",
-      statistic: "Minimum",
+      metricName: "HTTPCode_ELB_5XX_Count",
+      statistic: "Sum",
       period: 60,
       evaluationPeriods: 3,
-      threshold: 1,
-      comparisonOperator: "LessThanThreshold",
-      treatMissingData: "breaching",
+      threshold: 5,
+      comparisonOperator: "GreaterThanOrEqualToThreshold",
+      treatMissingData: "notBreaching",
       dimensions: { LoadBalancer: albArnSuffix },
       alarmActions: [snsAlarmTopic.arn],
       okActions: [snsAlarmTopic.arn],
     });
 
     // CloudWatch Dashboard
-    const dashboardBody = $resolve([albArnSuffix, ecsClusterName, region]).apply(
-      ([alb, ecs, reg]) =>
+    const dashboardBody = $resolve([
+      albArnSuffix,
+      ecsClusterName,
+      ecsServiceName,
+      region,
+    ]).apply(([alb, ecsCluster, ecsSvc, reg]) =>
         JSON.stringify({
           widgets: [
             {
@@ -210,6 +215,13 @@ export default $config({
                     "LoadBalancer",
                     alb,
                     { stat: "Sum", color: "#d62728", label: "5xx" },
+                  ],
+                  [
+                    "AWS/ApplicationELB",
+                    "HTTPCode_ELB_5XX_Count",
+                    "LoadBalancer",
+                    alb,
+                    { stat: "Sum", color: "#9467bd", label: "ALB 5xx" },
                   ],
                   [
                     "AWS/ApplicationELB",
@@ -318,7 +330,9 @@ export default $config({
                     "AWS/ECS",
                     "CPUUtilization",
                     "ClusterName",
-                    ecs,
+                    ecsCluster,
+                    "ServiceName",
+                    ecsSvc,
                     { stat: "Average", label: "CPU %" },
                   ],
                 ],
@@ -340,7 +354,9 @@ export default $config({
                     "AWS/ECS",
                     "MemoryUtilization",
                     "ClusterName",
-                    ecs,
+                    ecsCluster,
+                    "ServiceName",
+                    ecsSvc,
                     { stat: "Average", label: "Memory %" },
                   ],
                 ],
