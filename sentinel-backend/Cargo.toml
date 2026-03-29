@@ -10,7 +10,7 @@ tower-http = { version = "0.6", features = ["cors"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 
-# HTTP client (for JSON-RPC transaction submission)
+# HTTP client (for World REST API)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # gRPC client (Sui checkpoint streaming)
@@ -21,7 +21,6 @@ prost-types = "0.13"
 # Sui lightweight SDK (all from crates.io)
 sui-sdk-types = { version = "0.3", features = ["serde", "hash"] }
 sui-transaction-builder = { version = "0.3", features = ["intents"] }
-sui-graphql-client = "0.0.7"
 sui-crypto = { version = "0.3", features = ["ed25519", "pem"] }
 sui-rpc = "0.3"
 

@@ -50,6 +50,10 @@ backend-test:
 backend-test-integration: db
     cd sentinel-backend && DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel cargo test --test db_integration
 
+# Run integration tests against real Sui testnet (gRPC + GraphQL)
+backend-test-live:
+    cd sentinel-backend && cargo test --test grpc_integration_tests --test graphql_integration_tests -- --ignored
+
 # Build backend (release)
 backend-build:
     cd sentinel-backend && cargo build --release

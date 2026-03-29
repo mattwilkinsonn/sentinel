@@ -43,8 +43,7 @@ async fn run_stream(
     let request = SubscribeCheckpointsRequest {
         read_mask: Some(prost_types::FieldMask {
             paths: vec![
-                "checkpoint.transactions.events".into(),
-                "checkpoint.transactions.effects".into(),
+                "checkpoint.transactions".into(),
             ],
         }),
     };
@@ -90,12 +89,30 @@ async fn process_checkpoint(
 ) {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SAMPLE_COUNT: AtomicU64 = AtomicU64::new(0);
-    let timestamp_ms: u64 = checkpoint
-        .summary
-        .as_ref()
-        .and_then(|s| s.timestamp.as_ref())
-        .map(|ts| (ts.seconds as u64) * 1000 + (ts.nanos as u64) / 1_000_000)
-        .unwrap_or(0);
+    let timestamp_ms = checkpoint_timestamp_ms(checkpoint);
+
+    // Pre-scan: collect gate IDs from jump events that aren't cached yet
+    let uncached_gate_ids = {
+        let s = state.read().await;
+        collect_uncached_gate_ids(config, &s.live.gate_name_cache, checkpoint)
+    };
+
+    // Resolve uncached gate names via gRPC (outside the state lock)
+    if !uncached_gate_ids.is_empty() {
+        let channel = crate::sui_client::connect(&config.sui_grpc_url).await.ok();
+        if let Some(ch) = channel {
+            let mut s = state.write().await;
+            for gate_id in &uncached_gate_ids {
+                let name = crate::historical::resolve_gate_name(
+                    ch.clone(),
+                    gate_id,
+                    &mut s.live.gate_name_cache,
+                )
+                .await;
+                tracing::debug!("Resolved gate {gate_id} → {name}");
+            }
+        }
+    }
 
     for tx in &checkpoint.transactions {
         let events = tx
@@ -156,6 +173,109 @@ async fn process_checkpoint(
             }
 
             tracing::info!("checkpoint={cursor} event={event_type} pkg={package_id}");
+        }
+    }
+}
+
+/// Scan a checkpoint for jump events and return gate IDs not yet in the cache.
+fn collect_uncached_gate_ids(
+    config: &AppConfig,
+    cache: &std::collections::HashMap<String, String>,
+    checkpoint: &sui_rpc::Checkpoint,
+) -> Vec<String> {
+    let mut ids = Vec::new();
+    for tx in &checkpoint.transactions {
+        let events = tx
+            .events
+            .as_ref()
+            .map(|e| &e.events[..])
+            .unwrap_or_default();
+        for event in events {
+            let event_type = event.event_type.as_deref().unwrap_or("");
+            let package_id = event.package_id.as_deref().unwrap_or("");
+            if !event_type.contains("JumpEvent") {
+                continue;
+            }
+            if package_id != config.world_package_id {
+                continue;
+            }
+            let json = event
+                .json
+                .as_ref()
+                .map(|v| proto_value_to_json(v))
+                .unwrap_or(serde_json::Value::Null);
+            for field in ["source_gate_id", "destination_gate_id"] {
+                if let Some(gate_id) = json[field].as_str() {
+                    if !gate_id.is_empty() && !cache.contains_key(gate_id) {
+                        ids.push(gate_id.to_string());
+                    }
+                }
+            }
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+/// Extract timestamp from a checkpoint.
+pub fn checkpoint_timestamp_ms(checkpoint: &sui_rpc::Checkpoint) -> u64 {
+    checkpoint
+        .summary
+        .as_ref()
+        .and_then(|s| s.timestamp.as_ref())
+        .map(|ts| (ts.seconds as u64) * 1000 + (ts.nanos as u64) / 1_000_000)
+        .unwrap_or(0)
+}
+
+/// Process events from a checkpoint into a DataStore.
+/// Used by both live streaming and historical replay.
+pub fn process_checkpoint_events(
+    config: &AppConfig,
+    store: &mut crate::types::DataStore,
+    sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+    checkpoint: &sui_rpc::Checkpoint,
+    timestamp_ms: u64,
+) {
+    for tx in &checkpoint.transactions {
+        let events = tx
+            .events
+            .as_ref()
+            .map(|e| &e.events[..])
+            .unwrap_or_default();
+
+        for event in events {
+            let event_type = event.event_type.as_deref().unwrap_or("");
+            let package_id = event.package_id.as_deref().unwrap_or("");
+
+            if package_id != config.world_package_id
+                && package_id != config.bounty_board_package_id
+                && package_id != config.sentinel_package_id
+            {
+                continue;
+            }
+
+            let json_value = event
+                .json
+                .as_ref()
+                .map(|v| proto_value_to_json(v))
+                .unwrap_or(serde_json::Value::Null);
+
+            if event_type.contains("KillMailCreatedEvent")
+                || event_type.contains("KillmailCreatedEvent")
+            {
+                handle_killmail(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("BountyPostedEvent") {
+                handle_bounty_posted(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("BountyCancelledEvent")
+                || event_type.contains("ContributionWithdrawnEvent")
+            {
+                handle_bounty_removed(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("JumpEvent") {
+                handle_jump(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("CharacterCreatedEvent") {
+                handle_character_created(store, sse_tx, &json_value, timestamp_ms);
+            }
         }
     }
 }
@@ -310,12 +430,35 @@ fn handle_jump(
     json: &serde_json::Value,
     timestamp_ms: u64,
 ) {
-    let character_id = json_item_id(json, "character_id").or_else(|| json_u64(json, "characterId"));
+    let character_id = json_item_id(json, "character_id")
+        .or_else(|| json_item_id(json, "character_key"))
+        .or_else(|| json_u64(json, "characterId"));
     let system = json_item_id_str(json, "solar_system_id")
         .or_else(|| json_str(json, "solarSystemId"))
         .unwrap_or_default();
     let system_for_event = system.clone();
     let system_name = resolve_system_name(state, &system);
+
+    let source_gate_id = json["source_gate_id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let dest_gate_id = json["destination_gate_id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+
+    // Resolve gate names from cache if available
+    let source_gate = state
+        .gate_name_cache
+        .get(&source_gate_id)
+        .cloned()
+        .unwrap_or_else(|| source_gate_id.clone());
+    let dest_gate = state
+        .gate_name_cache
+        .get(&dest_gate_id)
+        .cloned()
+        .unwrap_or_else(|| dest_gate_id.clone());
 
     if let Some(char_id) = character_id {
         let name = resolve_name(state, char_id);
@@ -343,10 +486,42 @@ fn handle_jump(
             data: serde_json::json!({
                 "character_id": character_id,
                 "solar_system_id": system_for_event,
+                "source_gate": source_gate,
+                "dest_gate": dest_gate,
+                "source_gate_id": source_gate_id,
+                "dest_gate_id": dest_gate_id,
             }),
         },
         sse_tx,
     );
+}
+
+fn handle_character_created(
+    state: &mut crate::types::DataStore,
+    sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+    json: &serde_json::Value,
+    timestamp_ms: u64,
+) {
+    let char_id = json_item_id(json, "key")
+        .or_else(|| json_item_id(json, "character_id"))
+        .or_else(|| json_u64(json, "characterId"));
+
+    if let Some(id) = char_id {
+        state.profiles.entry(id).or_insert_with(|| ThreatProfile {
+            character_item_id: id,
+            name: format!("Pilot #{id}"),
+            ..Default::default()
+        });
+
+        state.push_event(
+            RawEvent {
+                event_type: "new_character".into(),
+                timestamp_ms,
+                data: serde_json::json!({ "character_id": id }),
+            },
+            sse_tx,
+        );
+    }
 }
 
 /// Look up a cached name, or return a fallback.
@@ -408,7 +583,7 @@ fn json_str(v: &serde_json::Value, key: &str) -> Option<String> {
 }
 
 /// Convert protobuf `Value` to serde_json `Value`.
-fn proto_value_to_json(v: &prost_types::Value) -> serde_json::Value {
+pub fn proto_value_to_json(v: &prost_types::Value) -> serde_json::Value {
     use prost_types::value::Kind;
     match &v.kind {
         Some(Kind::NullValue(_)) => serde_json::Value::Null,

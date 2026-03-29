@@ -13,7 +13,7 @@ dist/
 sentinel-backend/target/
 
 # gRPC protos (cloned at build time)
-sentinel-backend/proto/sui-apis/
+sentinel-backend/proto/
 
 # SST
 .sst/

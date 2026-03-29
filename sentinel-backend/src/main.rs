@@ -7,6 +7,7 @@ mod grpc;
 mod historical;
 mod names;
 mod publisher;
+pub mod sui_client;
 mod threat_engine;
 mod types;
 mod world_api;
@@ -62,7 +63,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut s = state.write().await;
         db::load_into(&db_pool, &mut s.live).await?;
         let name_count = db::load_character_names(&db_pool, &mut s.live).await?;
-        tracing::info!("Loaded {name_count} character names from DB cache");
+        let gate_count = db::load_gate_names(&db_pool, &mut s.live).await?;
+        tracing::info!("Loaded {name_count} character names, {gate_count} gate names from DB cache");
         if let Some(cp) = db::load_checkpoint(&db_pool).await? {
             tracing::info!("Resuming from checkpoint {cp}");
             s.last_checkpoint = Some(cp);
@@ -116,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             meta_client,
             meta_state,
             meta_pool,
-            config.sui_graphql_url.clone(),
+            config.sui_grpc_url.clone(),
             config.world_package_id.clone(),
         )
         .await;
@@ -144,6 +146,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Background loop that flushes dirty live profiles and checkpoint to Postgres.
 async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_events: usize) {
     let mut last_event_count: usize = initial_events;
+    let mut persisted_gates: std::collections::HashSet<String> = {
+        // Pre-populate with gates already in DB (loaded at startup)
+        let s = state.read().await;
+        s.live.gate_name_cache.keys().cloned().collect()
+    };
 
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -195,6 +202,20 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
         if let Some(cp) = checkpoint {
             if let Err(e) = db::save_checkpoint(&pool, cp).await {
                 tracing::warn!("Failed to save checkpoint: {e}");
+            }
+        }
+
+        // Persist any new gate names
+        {
+            let s = state.read().await;
+            for (gate_id, name) in &s.live.gate_name_cache {
+                if !persisted_gates.contains(gate_id) {
+                    if let Err(e) = db::upsert_gate_name(&pool, gate_id, name).await {
+                        tracing::warn!("Failed to persist gate name {gate_id}: {e}");
+                    } else {
+                        persisted_gates.insert(gate_id.clone());
+                    }
+                }
             }
         }
 

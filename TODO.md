@@ -41,10 +41,11 @@ Deadline: March 31, 2026 23:59 UTC
       loaded instantly on restart
 - [x] ~~Live name resolution~~ — metadata resolver fetches names
       for new characters via GraphQL every 10s
-- [ ] **Migrate publisher to gRPC** — switch from JSON-RPC to gRPC
-      `TransactionExecutionService.ExecuteTransaction` for on-chain
-      publishing. Narrative: started with JSON-RPC for MVP, migrated
-      to gRPC for performance. Helps "Best Technical" category.
+- [x] ~~Migrate publisher to gRPC~~ — publisher, historical loader,
+      and world_api all migrated to gRPC v2. GraphQL retained for
+      cold-start indexed queries. Removed `sui-graphql-client` dep.
+      Added `sui_client.rs` shared utilities, 28 mock tests,
+      11 live testnet integration tests.
 - [ ] **Add Claude development section to README** — document AI-assisted
       development process with example prompts showing human direction
       of architecture, design decisions, and technical corrections.
@@ -57,6 +58,10 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Medium priority
 
+- [ ] **Dashboard card navigation UX** — the stat cards at the top of
+      the dashboard are clickable to switch views, but this isn't
+      obvious. Add hover states, cursor pointer, subtle arrow/icon,
+      or "click to view" tooltip to make it discoverable.
 - [ ] **Time filters** — reusable dropdown component for 1h/24h/7d/all.
       Wire into: events feed, systems view, tracked pilots, kills view.
       Custom date range picker as stretch goal.
@@ -98,11 +103,17 @@ Deadline: March 31, 2026 23:59 UTC
       field to attribute kills to structure owners.
 - [ ] **StatusChangedEvent / GateCreatedEvent** — track assembly
       online/offline and new gate deployments.
+- [ ] **Narrow gRPC read_mask paths** — currently requesting full
+      `transactions` in checkpoint subscriptions. Could use specific
+      sub-paths like `transactions.events` + `transactions.effects`
+      to reduce bandwidth. Blocked on Sui v1.68.1 rejecting nested
+      paths; revisit when node stabilizes field mask validation.
 
 ## Architecture notes
 
 - World API: `https://world-api-stillness.live.tech.evefrontier.com/v2`
-- Sui GraphQL: `https://graphql.testnet.sui.io/graphql`
+- Sui GraphQL: `https://sui-testnet.mystenlabs.com/graphql`
+- Sui gRPC: `https://fullnode.testnet.sui.io:443`
 - Stillness world package:
   `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c`
 - Killmail registry:
