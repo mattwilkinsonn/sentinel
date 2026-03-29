@@ -464,6 +464,7 @@ async fn list_dynamic_fields_returns_fields() {
 async fn process_checkpoint_events_handles_killmail() {
     let config = sentinel_backend::config::AppConfig {
         sui_grpc_url: "http://unused".into(),
+        sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
         admin_private_key: String::new(),
@@ -533,6 +534,7 @@ async fn process_checkpoint_events_handles_killmail() {
 async fn process_checkpoint_events_handles_character_created() {
     let config = sentinel_backend::config::AppConfig {
         sui_grpc_url: "http://unused".into(),
+        sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
         admin_private_key: String::new(),
@@ -594,6 +596,7 @@ async fn process_checkpoint_events_handles_character_created() {
 async fn process_checkpoint_events_filters_wrong_package() {
     let config = sentinel_backend::config::AppConfig {
         sui_grpc_url: "http://unused".into(),
+        sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
         admin_private_key: String::new(),
@@ -637,6 +640,7 @@ async fn process_checkpoint_events_filters_wrong_package() {
 async fn checkpoint_replay_processes_events_across_checkpoints() {
     let config = sentinel_backend::config::AppConfig {
         sui_grpc_url: "unused".into(),
+        sui_graphql_url: "http://unused".into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
         admin_private_key: String::new(),

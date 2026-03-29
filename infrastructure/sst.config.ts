@@ -123,6 +123,7 @@ export default $config({
         WORLD_PACKAGE_ID: CHAIN_IDS.worldPackageId,
         BUILDER_PACKAGE_ID: CHAIN_IDS.builderPackageId,
         SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443",
+        SUI_GRAPHQL_URL: "https://sui-testnet.mystenlabs.com/graphql",
         DATABASE_URL: databaseUrl,
       },
     });

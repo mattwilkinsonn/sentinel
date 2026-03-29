@@ -4,6 +4,8 @@ use std::env;
 pub struct AppConfig {
     /// gRPC endpoint for Sui fullnode (e.g., "https://fullnode.testnet.sui.io:443")
     pub sui_grpc_url: String,
+    /// GraphQL endpoint for indexed queries (historical object/event scans)
+    pub sui_graphql_url: String,
     /// Sentinel package ID on chain
     pub sentinel_package_id: String,
     /// ThreatRegistry shared object ID
@@ -29,6 +31,8 @@ impl AppConfig {
         Ok(Self {
             sui_grpc_url: env::var("SUI_GRPC_URL")
                 .unwrap_or_else(|_| "https://fullnode.testnet.sui.io:443".into()),
+            sui_graphql_url: env::var("SUI_GRAPHQL_URL")
+                .unwrap_or_else(|_| "https://sui-testnet.mystenlabs.com/graphql".into()),
             sentinel_package_id: env::var("SENTINEL_PACKAGE_ID").unwrap_or_default(),
             threat_registry_id: env::var("THREAT_REGISTRY_ID").unwrap_or_default(),
             admin_private_key: env::var("ADMIN_PRIVATE_KEY").unwrap_or_default(),
