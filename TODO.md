@@ -41,10 +41,11 @@ Deadline: March 31, 2026 23:59 UTC
       loaded instantly on restart
 - [x] ~~Live name resolution~~ — metadata resolver fetches names
       for new characters via GraphQL every 10s
-- [ ] **Migrate publisher to gRPC** — switch from JSON-RPC to gRPC
-      `TransactionExecutionService.ExecuteTransaction` for on-chain
-      publishing. Narrative: started with JSON-RPC for MVP, migrated
-      to gRPC for performance. Helps "Best Technical" category.
+- [x] ~~Migrate publisher to gRPC~~ — publisher, historical loader,
+      and world_api all migrated to gRPC v2. GraphQL retained for
+      cold-start indexed queries. Removed `sui-graphql-client` dep.
+      Added `sui_client.rs` shared utilities, 28 mock tests,
+      11 live testnet integration tests.
 - [ ] **Add Claude development section to README** — document AI-assisted
       development process with example prompts showing human direction
       of architecture, design decisions, and technical corrections.
@@ -102,7 +103,8 @@ Deadline: March 31, 2026 23:59 UTC
 ## Architecture notes
 
 - World API: `https://world-api-stillness.live.tech.evefrontier.com/v2`
-- Sui GraphQL: `https://graphql.testnet.sui.io/graphql`
+- Sui GraphQL: `https://sui-testnet.mystenlabs.com/graphql`
+- Sui gRPC: `https://fullnode.testnet.sui.io:443`
 - Stillness world package:
   `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c`
 - Killmail registry:
