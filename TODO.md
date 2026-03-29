@@ -22,7 +22,7 @@ Deadline: March 31, 2026 23:59 UTC
       Published 78 profiles across
       InsufficientGas, now increased budget + smaller batches.
       Need to confirm `Published X threat scores — tx: <digest>`.
-- [ ] **Deploy to production** — using `sst.aws.StaticSite` with
+- [x] **Deploy to production** — using `sst.aws.StaticSite` with
       `sst.cloudflare.dns()`. ALB health check configured for
       `/api/health`. Public chain IDs in `CHAIN_IDS` config.
 - [ ] **Submit on Deepsurge** — register, submit repo link + materials
