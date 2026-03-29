@@ -150,9 +150,16 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     uses: ./.github/workflows/deploy-production.yml
     secrets: inherit
+    permissions:
+      id-token: write
+      contents: read
+
 
   deploy-dev:
     needs: [contracts, backend, frontend, lint]
     if: github.ref != 'refs/heads/main' && github.event_name == 'push'
     uses: ./.github/workflows/deploy-dev.yml
     secrets: inherit
+    permissions:
+      id-token: write
+      contents: read
