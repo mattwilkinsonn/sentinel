@@ -58,6 +58,10 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Medium priority
 
+- [ ] **Dashboard card navigation UX** — the stat cards at the top of
+      the dashboard are clickable to switch views, but this isn't
+      obvious. Add hover states, cursor pointer, subtle arrow/icon,
+      or "click to view" tooltip to make it discoverable.
 - [ ] **Time filters** — reusable dropdown component for 1h/24h/7d/all.
       Wire into: events feed, systems view, tracked pilots, kills view.
       Custom date range picker as stretch goal.
