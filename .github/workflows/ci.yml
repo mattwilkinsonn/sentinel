@@ -84,6 +84,21 @@ jobs:
         run: cd sentinel-backend && cargo build --release
 
       - name: Smoke test (backend starts and serves health check)
+        env:
+          SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443"
+          SUI_GRAPHQL_URL: "https://sui-testnet.mystenlabs.com/graphql"
+          SENTINEL_PACKAGE_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+          THREAT_REGISTRY_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+          SUI_PUBLISHER_KEY: "suiprivkey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpfkl3tt"
+          WORLD_PACKAGE_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+          BUILDER_PACKAGE_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+          SENTINEL_PUBLISH_INTERVAL_MS: "60000"
+          SENTINEL_PUBLISH_THRESHOLD_BP: "500"
+          SENTINEL_API_PORT: "3001"
+          WORLD_API_URL: "https://stillness-world-api.live.tech.evefrontier.com"
+          SENTINEL_LOG_LEVEL: "info"
+          CRATES_LOG_LEVEL: "warn"
+          LOG_FORMAT: "pretty"
         run: |
           cd sentinel-backend && ./target/release/sentinel-backend &
           PID=$!
@@ -135,7 +150,20 @@ jobs:
           docker run -d --name sentinel-smoke \
             --network host \
             -e DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel \
+            -e SUI_GRPC_URL=https://fullnode.testnet.sui.io:443 \
+            -e SUI_GRAPHQL_URL=https://sui-testnet.mystenlabs.com/graphql \
+            -e SENTINEL_PACKAGE_ID=0x0000000000000000000000000000000000000000000000000000000000000000 \
+            -e THREAT_REGISTRY_ID=0x0000000000000000000000000000000000000000000000000000000000000000 \
+            -e SUI_PUBLISHER_KEY=suiprivkey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpfkl3tt \
+            -e WORLD_PACKAGE_ID=0x0000000000000000000000000000000000000000000000000000000000000000 \
+            -e BUILDER_PACKAGE_ID=0x0000000000000000000000000000000000000000000000000000000000000000 \
+            -e SENTINEL_PUBLISH_INTERVAL_MS=60000 \
+            -e SENTINEL_PUBLISH_THRESHOLD_BP=500 \
             -e SENTINEL_API_PORT=3002 \
+            -e WORLD_API_URL=https://stillness-world-api.live.tech.evefrontier.com \
+            -e SENTINEL_LOG_LEVEL=info \
+            -e CRATES_LOG_LEVEL=warn \
+            -e LOG_FORMAT=pretty \
             ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           for i in $(seq 1 30); do
             if curl -sf http://localhost:3002/api/health > /dev/null 2>&1; then
