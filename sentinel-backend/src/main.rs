@@ -7,6 +7,7 @@ mod grpc;
 mod historical;
 mod names;
 mod publisher;
+pub mod sui_client;
 mod threat_engine;
 mod types;
 mod world_api;
@@ -116,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             meta_client,
             meta_state,
             meta_pool,
-            config.sui_graphql_url.clone(),
+            config.sui_grpc_url.clone(),
             config.world_package_id.clone(),
         )
         .await;

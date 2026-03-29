@@ -173,14 +173,14 @@ impl WorldApiClient {
 }
 
 /// Background loop that resolves pending system names and tribe affiliations.
+/// Character names are resolved via the World REST API (no Sui queries needed).
 pub async fn metadata_resolver_loop(
     world_client: std::sync::Arc<tokio::sync::RwLock<WorldApiClient>>,
     state: std::sync::Arc<tokio::sync::RwLock<crate::types::AppState>>,
     pool: PgPool,
-    graphql_url: String,
+    grpc_url: String,
     world_package_id: String,
 ) {
-    let http = reqwest::Client::new();
     let mut failed_names: std::collections::HashSet<u64> = std::collections::HashSet::new();
 
     loop {
@@ -212,7 +212,7 @@ pub async fn metadata_resolver_loop(
             (systems, tribes)
         };
 
-        // Resolve system names
+        // Resolve system names via World REST API
         for system_id in &pending_systems {
             let name = {
                 let mut client = world_client.write().await;
@@ -221,7 +221,6 @@ pub async fn metadata_resolver_loop(
             if let Some(name) = name {
                 if !name.is_empty() {
                     let mut s = state.write().await;
-                    // Update the shared cache so gRPC handlers can use it inline
                     s.live
                         .system_name_cache
                         .insert(system_id.clone(), name.clone());
@@ -237,7 +236,7 @@ pub async fn metadata_resolver_loop(
             }
         }
 
-        // Resolve tribe names
+        // Resolve tribe names via World REST API
         for tribe_id in &pending_tribes {
             let info = {
                 let mut client = world_client.write().await;
@@ -254,7 +253,7 @@ pub async fn metadata_resolver_loop(
             }
         }
 
-        // First check DB cache for names that were resolved by historical loader
+        // First check DB cache for names resolved by historical loader
         {
             let mut s = state.write().await;
             let unresolved: Vec<u64> = s
@@ -277,8 +276,9 @@ pub async fn metadata_resolver_loop(
             }
         }
 
-        // Resolve remaining unresolved character names via GraphQL
-        // Skip names we already failed to resolve (avoid spamming GraphQL)
+        // Resolve remaining unresolved character names via gRPC.
+        // We attempt to discover Character objects via the world registry,
+        // then fetch their JSON contents to extract metadata.name.
         let pending_names: Vec<u64> = {
             let s = state.read().await;
             s.live
@@ -293,67 +293,71 @@ pub async fn metadata_resolver_loop(
         };
 
         if !pending_names.is_empty() && !world_package_id.is_empty() {
-            let char_type = format!("{world_package_id}::character::Character");
-            // Query newest characters — new pilots are at the end
-            let query = format!(
-                r#"{{ objects(filter: {{ type: "{char_type}" }}, last: 50) {{
-                    nodes {{ asMoveObject {{ contents {{ json }} }} }}
-                }} }}"#
-            );
-            if let Ok(resp) = http
-                .post(&graphql_url)
-                .json(&serde_json::json!({ "query": query }))
-                .send()
-                .await
-            {
-                if let Ok(json) = resp.json::<serde_json::Value>().await {
-                    if let Some(errors) = json.get("errors") {
-                        tracing::debug!("GraphQL name query error: {errors}");
-                    }
-                    let nodes = json["data"]["objects"]["nodes"]
-                        .as_array()
-                        .cloned()
-                        .unwrap_or_default();
-                    tracing::debug!(
-                        "Name resolver: queried {} characters, looking for {:?}",
-                        nodes.len(),
-                        pending_names
-                    );
-                    let mut resolved = 0;
-                    let mut s = state.write().await;
-                    for node in &nodes {
-                        let contents = &node["asMoveObject"]["contents"]["json"];
-                        let item_id = contents["key"]["item_id"]
-                            .as_str()
-                            .and_then(|s| s.parse::<u64>().ok());
-                        let name = contents["metadata"]["name"]
-                            .as_str()
-                            .filter(|n| !n.is_empty());
-                        if let (Some(id), Some(name)) = (item_id, name) {
-                            if pending_names.contains(&id) {
-                                s.live.name_cache.insert(id, name.to_string());
-                                if let Some(p) = s.live.profiles.get_mut(&id) {
-                                    p.name = name.to_string();
-                                    p.dirty = true;
+            // Try to resolve names via gRPC by looking up known character object IDs
+            // from the object_id_cache (populated during checkpoint replay)
+            let object_ids: Vec<(u64, String)> = {
+                let s = state.read().await;
+                pending_names
+                    .iter()
+                    .filter_map(|id| {
+                        s.live
+                            .object_id_cache
+                            .get(id)
+                            .map(|oid| (*id, oid.clone()))
+                    })
+                    .collect()
+            };
+
+            if !object_ids.is_empty() {
+                if let Ok(channel) = crate::sui_client::connect(&grpc_url).await {
+                    let oids: Vec<String> =
+                        object_ids.iter().map(|(_, oid)| oid.clone()).collect();
+                    match crate::sui_client::batch_get_objects_json(channel, &oids).await {
+                        Ok(results) => {
+                            let mut resolved = 0;
+                            let mut s = state.write().await;
+                            for (_oid, json) in &results {
+                                let item_id = json["key"]["item_id"]
+                                    .as_str()
+                                    .and_then(|v| v.parse::<u64>().ok());
+                                let name: Option<&str> = json["metadata"]["name"]
+                                    .as_str()
+                                    .filter(|n| !n.is_empty());
+                                if let (Some(id), Some(name)) = (item_id, name) {
+                                    s.live.name_cache.insert(id, name.to_string());
+                                    if let Some(p) = s.live.profiles.get_mut(&id) {
+                                        p.name = name.to_string();
+                                        p.dirty = true;
+                                    }
+                                    let _ =
+                                        crate::db::upsert_character_name(&pool, id, name).await;
+                                    resolved += 1;
                                 }
-                                let _ = crate::db::upsert_character_name(&pool, id, name).await;
-                                resolved += 1;
+                            }
+                            if resolved > 0 {
+                                tracing::info!(
+                                    "Metadata resolver: resolved {resolved} character names via gRPC"
+                                );
                             }
                         }
-                    }
-                    if resolved > 0 {
-                        tracing::info!("Metadata resolver: resolved {resolved} character names");
-                    }
-                    // Mark unresolved names as failed so we don't retry
-                    for id in &pending_names {
-                        if !s
-                            .live
-                            .name_cache
-                            .get(id)
-                            .is_some_and(|n| !n.starts_with("Pilot #"))
-                        {
-                            failed_names.insert(*id);
+                        Err(e) => {
+                            tracing::debug!("gRPC batch name resolution failed: {e}");
                         }
+                    }
+                }
+            }
+
+            // Mark unresolved names as failed so we don't retry endlessly
+            {
+                let s = state.read().await;
+                for id in &pending_names {
+                    if !s
+                        .live
+                        .name_cache
+                        .get(id)
+                        .is_some_and(|n| !n.starts_with("Pilot #"))
+                    {
+                        failed_names.insert(*id);
                     }
                 }
             }

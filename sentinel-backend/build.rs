@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Compile Sui protos, mapping google.rpc to our module
     tonic_build::configure()
-        .build_server(false)
+        .build_server(true)
         .build_client(true)
         .extern_path(".google.rpc", "crate::google_rpc")
         .compile_protos(

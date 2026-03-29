@@ -54,6 +54,8 @@ pub struct DataStore {
     pub name_cache: HashMap<u64, String>,
     /// Solar system ID → name cache (populated by metadata resolver)
     pub system_name_cache: HashMap<String, String>,
+    /// character_item_id → Sui object ID cache (populated during checkpoint replay)
+    pub object_id_cache: HashMap<u64, String>,
 }
 
 impl DataStore {

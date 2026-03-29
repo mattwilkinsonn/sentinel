@@ -90,12 +90,7 @@ async fn process_checkpoint(
 ) {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SAMPLE_COUNT: AtomicU64 = AtomicU64::new(0);
-    let timestamp_ms: u64 = checkpoint
-        .summary
-        .as_ref()
-        .and_then(|s| s.timestamp.as_ref())
-        .map(|ts| (ts.seconds as u64) * 1000 + (ts.nanos as u64) / 1_000_000)
-        .unwrap_or(0);
+    let timestamp_ms = checkpoint_timestamp_ms(checkpoint);
 
     for tx in &checkpoint.transactions {
         let events = tx
@@ -156,6 +151,68 @@ async fn process_checkpoint(
             }
 
             tracing::info!("checkpoint={cursor} event={event_type} pkg={package_id}");
+        }
+    }
+}
+
+/// Extract timestamp from a checkpoint.
+pub fn checkpoint_timestamp_ms(checkpoint: &sui_rpc::Checkpoint) -> u64 {
+    checkpoint
+        .summary
+        .as_ref()
+        .and_then(|s| s.timestamp.as_ref())
+        .map(|ts| (ts.seconds as u64) * 1000 + (ts.nanos as u64) / 1_000_000)
+        .unwrap_or(0)
+}
+
+/// Process events from a checkpoint into a DataStore.
+/// Used by both live streaming and historical replay.
+pub fn process_checkpoint_events(
+    config: &AppConfig,
+    store: &mut crate::types::DataStore,
+    sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+    checkpoint: &sui_rpc::Checkpoint,
+    timestamp_ms: u64,
+) {
+    for tx in &checkpoint.transactions {
+        let events = tx
+            .events
+            .as_ref()
+            .map(|e| &e.events[..])
+            .unwrap_or_default();
+
+        for event in events {
+            let event_type = event.event_type.as_deref().unwrap_or("");
+            let package_id = event.package_id.as_deref().unwrap_or("");
+
+            if package_id != config.world_package_id
+                && package_id != config.bounty_board_package_id
+                && package_id != config.sentinel_package_id
+            {
+                continue;
+            }
+
+            let json_value = event
+                .json
+                .as_ref()
+                .map(|v| proto_value_to_json(v))
+                .unwrap_or(serde_json::Value::Null);
+
+            if event_type.contains("KillMailCreatedEvent")
+                || event_type.contains("KillmailCreatedEvent")
+            {
+                handle_killmail(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("BountyPostedEvent") {
+                handle_bounty_posted(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("BountyCancelledEvent")
+                || event_type.contains("ContributionWithdrawnEvent")
+            {
+                handle_bounty_removed(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("JumpEvent") {
+                handle_jump(store, sse_tx, &json_value, timestamp_ms);
+            } else if event_type.contains("CharacterCreatedEvent") {
+                handle_character_created(store, sse_tx, &json_value, timestamp_ms);
+            }
         }
     }
 }
@@ -349,6 +406,34 @@ fn handle_jump(
     );
 }
 
+fn handle_character_created(
+    state: &mut crate::types::DataStore,
+    sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+    json: &serde_json::Value,
+    timestamp_ms: u64,
+) {
+    let char_id = json_item_id(json, "key")
+        .or_else(|| json_item_id(json, "character_id"))
+        .or_else(|| json_u64(json, "characterId"));
+
+    if let Some(id) = char_id {
+        state.profiles.entry(id).or_insert_with(|| ThreatProfile {
+            character_item_id: id,
+            name: format!("Pilot #{id}"),
+            ..Default::default()
+        });
+
+        state.push_event(
+            RawEvent {
+                event_type: "new_character".into(),
+                timestamp_ms,
+                data: serde_json::json!({ "character_id": id }),
+            },
+            sse_tx,
+        );
+    }
+}
+
 /// Look up a cached name, or return a fallback.
 fn resolve_name(state: &crate::types::DataStore, character_item_id: u64) -> String {
     state
@@ -408,7 +493,7 @@ fn json_str(v: &serde_json::Value, key: &str) -> Option<String> {
 }
 
 /// Convert protobuf `Value` to serde_json `Value`.
-fn proto_value_to_json(v: &prost_types::Value) -> serde_json::Value {
+pub fn proto_value_to_json(v: &prost_types::Value) -> serde_json::Value {
     use prost_types::value::Kind;
     match &v.kind {
         Some(Kind::NullValue(_)) => serde_json::Value::Null,
