@@ -30,13 +30,16 @@ async fn real_get_service_info() {
 async fn real_get_checkpoint() {
     let channel = testnet_channel().await;
 
-    // Fetch checkpoint 1 (should always exist)
+    // Get latest height, then fetch a recent checkpoint (old ones get pruned)
+    let height = sui_client::get_latest_checkpoint(channel.clone()).await.unwrap();
+    let target = height.saturating_sub(10);
+
     let mut client = sui_rpc::ledger_service_client::LedgerServiceClient::new(channel);
-    let resp = sui_client::get_checkpoint(&mut client, 1).await.unwrap();
+    let resp = sui_client::get_checkpoint(&mut client, target).await.unwrap();
 
     let cp = resp.checkpoint.unwrap();
-    assert_eq!(cp.sequence_number, Some(1));
-    println!("Checkpoint 1 digest: {:?}", cp.digest);
+    assert_eq!(cp.sequence_number, Some(target));
+    println!("Checkpoint {target} digest: {:?}", cp.digest);
 }
 
 #[tokio::test]
