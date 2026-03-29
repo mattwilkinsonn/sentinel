@@ -139,11 +139,13 @@ jobs:
           context: sentinel-backend
           provenance: false
           push: true
-          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Pull Docker image for smoke test
+        run: docker pull ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
 
       - name: Smoke test (Docker container starts and serves health check)
         run: |
