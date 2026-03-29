@@ -141,7 +141,7 @@ export default $config({
 
     // 5xx errors (server-side failures)
     new aws.cloudwatch.MetricAlarm("Backend5xxAlarm", {
-      alarmName: `sentinel-${$app.stage}-5xx-errors`,
+      name: `sentinel-${$app.stage}-5xx-errors`,
       alarmDescription: "Backend returning 5xx errors",
       namespace: "AWS/ApplicationELB",
       metricName: "HTTPCode_Target_5XX_Count",
@@ -158,7 +158,7 @@ export default $config({
 
     // 4xx errors (elevated client errors may indicate a problem)
     new aws.cloudwatch.MetricAlarm("Backend4xxAlarm", {
-      alarmName: `sentinel-${$app.stage}-4xx-errors`,
+      name: `sentinel-${$app.stage}-4xx-errors`,
       alarmDescription: "Elevated 4xx client errors",
       namespace: "AWS/ApplicationELB",
       metricName: "HTTPCode_Target_4XX_Count",
@@ -175,7 +175,7 @@ export default $config({
 
     // ALB 5xx (ALB itself returning errors — targets unreachable or crashing)
     new aws.cloudwatch.MetricAlarm("AlbErrorAlarm", {
-      alarmName: `sentinel-${$app.stage}-alb-5xx`,
+      name: `sentinel-${$app.stage}-alb-5xx`,
       alarmDescription: "ALB returning 5xx — targets may be down",
       namespace: "AWS/ApplicationELB",
       metricName: "HTTPCode_ELB_5XX_Count",
@@ -197,175 +197,175 @@ export default $config({
       ecsServiceName,
       region,
     ]).apply(([alb, ecsCluster, ecsSvc, reg]) =>
-        JSON.stringify({
-          widgets: [
-            {
-              type: "metric",
-              x: 0,
-              y: 0,
-              width: 12,
-              height: 6,
-              properties: {
-                title: "HTTP 5xx / 4xx Errors",
-                region: reg,
-                metrics: [
-                  [
-                    "AWS/ApplicationELB",
-                    "HTTPCode_Target_5XX_Count",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "Sum", color: "#d62728", label: "5xx" },
-                  ],
-                  [
-                    "AWS/ApplicationELB",
-                    "HTTPCode_ELB_5XX_Count",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "Sum", color: "#9467bd", label: "ALB 5xx" },
-                  ],
-                  [
-                    "AWS/ApplicationELB",
-                    "HTTPCode_Target_4XX_Count",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "Sum", color: "#ff7f0e", label: "4xx" },
-                  ],
+      JSON.stringify({
+        widgets: [
+          {
+            type: "metric",
+            x: 0,
+            y: 0,
+            width: 12,
+            height: 6,
+            properties: {
+              title: "HTTP 5xx / 4xx Errors",
+              region: reg,
+              metrics: [
+                [
+                  "AWS/ApplicationELB",
+                  "HTTPCode_Target_5XX_Count",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "Sum", color: "#d62728", label: "5xx" },
                 ],
-                period: 300,
-                view: "timeSeries",
-                stacked: false,
-              },
-            },
-            {
-              type: "metric",
-              x: 12,
-              y: 0,
-              width: 12,
-              height: 6,
-              properties: {
-                title: "Request Count",
-                region: reg,
-                metrics: [
-                  [
-                    "AWS/ApplicationELB",
-                    "RequestCount",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "Sum", label: "Requests" },
-                  ],
+                [
+                  "AWS/ApplicationELB",
+                  "HTTPCode_ELB_5XX_Count",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "Sum", color: "#9467bd", label: "ALB 5xx" },
                 ],
-                period: 300,
-                view: "timeSeries",
-              },
-            },
-            {
-              type: "metric",
-              x: 0,
-              y: 6,
-              width: 12,
-              height: 6,
-              properties: {
-                title: "Response Time (p99 / avg)",
-                region: reg,
-                metrics: [
-                  [
-                    "AWS/ApplicationELB",
-                    "TargetResponseTime",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "p99", label: "p99" },
-                  ],
-                  [
-                    "AWS/ApplicationELB",
-                    "TargetResponseTime",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "Average", label: "avg" },
-                  ],
+                [
+                  "AWS/ApplicationELB",
+                  "HTTPCode_Target_4XX_Count",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "Sum", color: "#ff7f0e", label: "4xx" },
                 ],
-                period: 300,
-                view: "timeSeries",
-              },
+              ],
+              period: 300,
+              view: "timeSeries",
+              stacked: false,
             },
-            {
-              type: "metric",
-              x: 12,
-              y: 6,
-              width: 12,
-              height: 6,
-              properties: {
-                title: "Healthy / Unhealthy Targets",
-                region: reg,
-                metrics: [
-                  [
-                    "AWS/ApplicationELB",
-                    "HealthyHostCount",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "Average", color: "#2ca02c", label: "Healthy" },
-                  ],
-                  [
-                    "AWS/ApplicationELB",
-                    "UnHealthyHostCount",
-                    "LoadBalancer",
-                    alb,
-                    { stat: "Average", color: "#d62728", label: "Unhealthy" },
-                  ],
+          },
+          {
+            type: "metric",
+            x: 12,
+            y: 0,
+            width: 12,
+            height: 6,
+            properties: {
+              title: "Request Count",
+              region: reg,
+              metrics: [
+                [
+                  "AWS/ApplicationELB",
+                  "RequestCount",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "Sum", label: "Requests" },
                 ],
-                period: 60,
-                view: "timeSeries",
-              },
+              ],
+              period: 300,
+              view: "timeSeries",
             },
-            {
-              type: "metric",
-              x: 0,
-              y: 12,
-              width: 12,
-              height: 6,
-              properties: {
-                title: "ECS CPU Utilization",
-                region: reg,
-                metrics: [
-                  [
-                    "AWS/ECS",
-                    "CPUUtilization",
-                    "ClusterName",
-                    ecsCluster,
-                    "ServiceName",
-                    ecsSvc,
-                    { stat: "Average", label: "CPU %" },
-                  ],
+          },
+          {
+            type: "metric",
+            x: 0,
+            y: 6,
+            width: 12,
+            height: 6,
+            properties: {
+              title: "Response Time (p99 / avg)",
+              region: reg,
+              metrics: [
+                [
+                  "AWS/ApplicationELB",
+                  "TargetResponseTime",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "p99", label: "p99" },
                 ],
-                period: 300,
-                view: "timeSeries",
-              },
-            },
-            {
-              type: "metric",
-              x: 12,
-              y: 12,
-              width: 12,
-              height: 6,
-              properties: {
-                title: "ECS Memory Utilization",
-                region: reg,
-                metrics: [
-                  [
-                    "AWS/ECS",
-                    "MemoryUtilization",
-                    "ClusterName",
-                    ecsCluster,
-                    "ServiceName",
-                    ecsSvc,
-                    { stat: "Average", label: "Memory %" },
-                  ],
+                [
+                  "AWS/ApplicationELB",
+                  "TargetResponseTime",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "Average", label: "avg" },
                 ],
-                period: 300,
-                view: "timeSeries",
-              },
+              ],
+              period: 300,
+              view: "timeSeries",
             },
-          ],
-        }),
+          },
+          {
+            type: "metric",
+            x: 12,
+            y: 6,
+            width: 12,
+            height: 6,
+            properties: {
+              title: "Healthy / Unhealthy Targets",
+              region: reg,
+              metrics: [
+                [
+                  "AWS/ApplicationELB",
+                  "HealthyHostCount",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "Average", color: "#2ca02c", label: "Healthy" },
+                ],
+                [
+                  "AWS/ApplicationELB",
+                  "UnHealthyHostCount",
+                  "LoadBalancer",
+                  alb,
+                  { stat: "Average", color: "#d62728", label: "Unhealthy" },
+                ],
+              ],
+              period: 60,
+              view: "timeSeries",
+            },
+          },
+          {
+            type: "metric",
+            x: 0,
+            y: 12,
+            width: 12,
+            height: 6,
+            properties: {
+              title: "ECS CPU Utilization",
+              region: reg,
+              metrics: [
+                [
+                  "AWS/ECS",
+                  "CPUUtilization",
+                  "ClusterName",
+                  ecsCluster,
+                  "ServiceName",
+                  ecsSvc,
+                  { stat: "Average", label: "CPU %" },
+                ],
+              ],
+              period: 300,
+              view: "timeSeries",
+            },
+          },
+          {
+            type: "metric",
+            x: 12,
+            y: 12,
+            width: 12,
+            height: 6,
+            properties: {
+              title: "ECS Memory Utilization",
+              region: reg,
+              metrics: [
+                [
+                  "AWS/ECS",
+                  "MemoryUtilization",
+                  "ClusterName",
+                  ecsCluster,
+                  "ServiceName",
+                  ecsSvc,
+                  { stat: "Average", label: "Memory %" },
+                ],
+              ],
+              period: 300,
+              view: "timeSeries",
+            },
+          },
+        ],
+      }),
     );
 
     new aws.cloudwatch.Dashboard("SentinelDashboard", {
