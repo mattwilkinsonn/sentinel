@@ -103,6 +103,11 @@ Deadline: March 31, 2026 23:59 UTC
       field to attribute kills to structure owners.
 - [ ] **StatusChangedEvent / GateCreatedEvent** — track assembly
       online/offline and new gate deployments.
+- [ ] **Narrow gRPC read_mask paths** — currently requesting full
+      `transactions` in checkpoint subscriptions. Could use specific
+      sub-paths like `transactions.events` + `transactions.effects`
+      to reduce bandwidth. Blocked on Sui v1.68.1 rejecting nested
+      paths; revisit when node stabilizes field mask validation.
 
 ## Architecture notes
 
