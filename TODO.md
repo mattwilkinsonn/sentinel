@@ -70,7 +70,7 @@ Deadline: March 31, 2026 23:59 UTC
 - [ ] **Pilot search** — search for a specific pilot by name or ID
       across all tracked pilots (not just active ones).
 - [ ] **System map** — fetch all 24,502 systems from World API,
-      render as 3D Three.js scatter plot (like ef-map.com).
+      render as WASM scatter plot (like ef-map.com).
       Color by threat density, animate live events. ~4 hours.
 - [ ] **Smart Gate demo** — deploy a gate on Stillness, authorize
       SENTINEL, demonstrate a pilot being blocked. Even a video of
