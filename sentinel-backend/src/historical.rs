@@ -737,7 +737,7 @@ async fn replay_checkpoints(
     let gap = latest - start + 1;
     tracing::info!("Replaying {gap} checkpoints ({start}..={latest}) via gRPC");
 
-    let mut client = LedgerServiceClient::new(channel);
+    let mut client = LedgerServiceClient::new(channel.clone());
     let mut processed = 0u64;
     let mut events_found = 0u64;
 
@@ -794,7 +794,82 @@ async fn replay_checkpoints(
         state.read().await.live.profiles.len()
     );
 
+    // Post-replay: resolve gate names for any jump events from replay
+    resolve_replay_gate_names(state, channel).await;
+
     Ok(())
+}
+
+/// After checkpoint replay, resolve any gate IDs in recent jump events that
+/// aren't cached yet. Updates both the cache and the event data in place.
+async fn resolve_replay_gate_names(
+    state: &Arc<RwLock<AppState>>,
+    channel: Channel,
+) {
+    // Collect uncached gate IDs from recent jump events
+    let uncached: Vec<String> = {
+        let s = state.read().await;
+        let mut ids: Vec<String> = s
+            .live
+            .recent_events
+            .iter()
+            .filter(|e| e.event_type == "jump")
+            .flat_map(|e| {
+                let mut gate_ids = Vec::new();
+                if let Some(id) = e.data["source_gate_id"].as_str() {
+                    if !id.is_empty() && !s.live.gate_name_cache.contains_key(id) {
+                        gate_ids.push(id.to_string());
+                    }
+                }
+                if let Some(id) = e.data["dest_gate_id"].as_str() {
+                    if !id.is_empty() && !s.live.gate_name_cache.contains_key(id) {
+                        gate_ids.push(id.to_string());
+                    }
+                }
+                gate_ids
+            })
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    };
+
+    if uncached.is_empty() {
+        return;
+    }
+
+    tracing::info!("Resolving {} gate names from replay jump events", uncached.len());
+
+    // Resolve each gate name via gRPC
+    {
+        let mut s = state.write().await;
+        for gate_id in &uncached {
+            resolve_gate_name(channel.clone(), gate_id, &mut s.live.gate_name_cache).await;
+        }
+    }
+
+    // Patch jump events with resolved names
+    {
+        let mut s = state.write().await;
+        let cache = s.live.gate_name_cache.clone();
+        for event in s.live.recent_events.iter_mut() {
+            if event.event_type != "jump" {
+                continue;
+            }
+            if let Some(id) = event.data["source_gate_id"].as_str() {
+                if let Some(name) = cache.get(id) {
+                    event.data["source_gate"] = serde_json::Value::String(name.clone());
+                }
+            }
+            if let Some(id) = event.data["dest_gate_id"].as_str() {
+                if let Some(name) = cache.get(id) {
+                    event.data["dest_gate"] = serde_json::Value::String(name.clone());
+                }
+            }
+        }
+    }
+
+    tracing::info!("Gate name resolution complete");
 }
 
 // ---------------------------------------------------------------------------

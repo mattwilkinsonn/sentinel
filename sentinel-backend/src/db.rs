@@ -217,6 +217,40 @@ pub async fn load_character_names(
     Ok(count)
 }
 
+/// Load gate names from DB cache into the DataStore.
+pub async fn load_gate_names(
+    pool: &PgPool,
+    store: &mut DataStore,
+) -> Result<usize, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, String)>(
+        "SELECT gate_id, name FROM gate_name_cache",
+    )
+    .fetch_all(pool)
+    .await?;
+    let count = rows.len();
+    for (gate_id, name) in rows {
+        store.gate_name_cache.insert(gate_id, name);
+    }
+    Ok(count)
+}
+
+/// Save a gate name to the DB cache.
+pub async fn upsert_gate_name(
+    pool: &PgPool,
+    gate_id: &str,
+    name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO gate_name_cache (gate_id, name) VALUES ($1, $2) \
+         ON CONFLICT (gate_id) DO UPDATE SET name = EXCLUDED.name, fetched_at = NOW()",
+    )
+    .bind(gate_id)
+    .bind(name)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Save a character name to the DB cache.
 pub async fn upsert_character_name(
     pool: &PgPool,

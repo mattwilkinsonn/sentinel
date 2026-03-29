@@ -56,6 +56,8 @@ pub struct DataStore {
     pub system_name_cache: HashMap<String, String>,
     /// character_item_id → Sui object ID cache (populated during checkpoint replay)
     pub object_id_cache: HashMap<u64, String>,
+    /// Gate object ID → display name cache (populated via gRPC lookups)
+    pub gate_name_cache: HashMap<String, String>,
 }
 
 impl DataStore {
