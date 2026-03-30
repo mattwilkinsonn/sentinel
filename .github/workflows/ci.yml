@@ -149,8 +149,7 @@ jobs:
 
       - name: Smoke test (Docker image starts and serves health check)
         run: |
-          docker run --rm -d --name sentinel-smoke \
-            -p 3002:3001 \
+          docker run -d --name sentinel-smoke \
             -e SUI_GRPC_URL="https://fullnode.testnet.sui.io:443" \
             -e SUI_GRAPHQL_URL="https://sui-testnet.mystenlabs.com/graphql" \
             -e SENTINEL_PACKAGE_ID="0x0000000000000000000000000000000000000000000000000000000000000000" \
@@ -169,16 +168,16 @@ jobs:
             --network host \
             ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:3002/api/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
               echo "Health check passed"
-              docker stop sentinel-smoke
+              docker rm -f sentinel-smoke
               exit 0
             fi
             sleep 1
           done
           echo "Docker container failed to start within 30s"
           docker logs sentinel-smoke
-          docker stop sentinel-smoke 2>/dev/null
+          docker rm -f sentinel-smoke 2>/dev/null
           exit 1
 
   frontend:
