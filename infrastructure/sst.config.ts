@@ -50,8 +50,8 @@ function loadEnv(): EnvConfig {
 // One-time setup:
 //   aws ssm put-parameter --name /sentinel/<stage>/sui-publisher-key --type SecureString --value <key>
 //   aws ssm put-parameter --name /sentinel/<stage>/discord-token --type SecureString --value <token>
-function ssmArn(stage: string, name: string): string {
-  return `arn:aws:ssm:us-east-1:${aws.getCallerIdentityOutput().accountId}:parameter/sentinel/${stage}/${name}`;
+function ssmArn(stage: string, name: string) {
+  return $interpolate`arn:aws:ssm:us-east-1:${aws.getCallerIdentityOutput().accountId}:parameter/sentinel/${stage}/${name}`;
 }
 
 function domainForStage(stage: string): string {
