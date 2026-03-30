@@ -52,6 +52,9 @@ async fn run_stream(
 
     tracing::info!("gRPC checkpoint stream connected");
     tracing::info!(
+        world_pkg = %config.world_package_id,
+        bounty_pkg = %config.bounty_board_package_id,
+        sentinel_pkg = %config.sentinel_package_id,
         "Filtering for packages: world={}, bounty={}, sentinel={}",
         config.world_package_id,
         config.bounty_board_package_id,
@@ -77,6 +80,8 @@ async fn run_stream(
         // Heartbeat every 100 checkpoints
         if checkpoint_count % 100 == 0 {
             tracing::debug!(
+                checkpoint_count,
+                cursor,
                 "gRPC stream alive — processed {checkpoint_count} checkpoints, cursor={cursor}"
             );
         }
@@ -116,7 +121,7 @@ async fn process_checkpoint(
                     &mut s.live.gate_name_cache,
                 )
                 .await;
-                tracing::debug!("Resolved gate {gate_id} → {name}");
+                tracing::debug!(gate_id, gate_name = %name, "Resolved gate {gate_id} → {name}");
             }
         }
     }
@@ -136,7 +141,12 @@ async fn process_checkpoint(
             let sample = SAMPLE_COUNT.load(Ordering::Relaxed);
             if sample < 20 {
                 SAMPLE_COUNT.fetch_add(1, Ordering::Relaxed);
-                tracing::info!("Event sample #{sample}: type={event_type} pkg={package_id}");
+                tracing::info!(
+                    sample,
+                    event_type,
+                    package_id,
+                    "Event sample #{sample}: type={event_type} pkg={package_id}"
+                );
             }
 
             // Filter for events from world or bounty_board packages
@@ -146,6 +156,9 @@ async fn process_checkpoint(
             {
                 if event_type.contains("Kill") || event_type.contains("kill") {
                     tracing::info!(
+                        event_type,
+                        package_id,
+                        want = %config.world_package_id,
                         "Skipped kill-like event: type={event_type} pkg={package_id} (want={})",
                         config.world_package_id
                     );
@@ -179,7 +192,12 @@ async fn process_checkpoint(
                 handle_jump(store, &sse_tx, &json_value, timestamp_ms);
             }
 
-            tracing::info!("checkpoint={cursor} event={event_type} pkg={package_id}");
+            tracing::info!(
+                cursor,
+                event_type,
+                package_id,
+                "checkpoint={cursor} event={event_type} pkg={package_id}"
+            );
         }
     }
 }
@@ -261,6 +279,13 @@ pub fn process_checkpoint_events(
             {
                 continue;
             }
+
+            tracing::debug!(
+                event_type,
+                package_id,
+                timestamp_ms,
+                "event dispatched: {event_type} from {package_id}"
+            );
 
             let json_value = event
                 .json

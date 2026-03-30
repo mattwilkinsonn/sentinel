@@ -35,12 +35,16 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
         return;
     }
 
-    tracing::info!("Resolving names for {} characters", pending.len());
+    tracing::info!(
+        count = pending.len(),
+        "Resolving names for {} characters",
+        pending.len()
+    );
 
     let channel = match connect_grpc(config).await {
         Ok(ch) => ch,
         Err(e) => {
-            tracing::warn!("Failed to connect for name resolution: {e}");
+            tracing::warn!(error = %e, "Failed to connect for name resolution: {e}");
             return;
         }
     };
@@ -65,7 +69,7 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
             }
         }
         Err(e) => {
-            tracing::warn!("gRPC batch name resolution failed: {e}");
+            tracing::warn!(error = %e, "gRPC batch name resolution failed: {e}");
         }
     }
 }

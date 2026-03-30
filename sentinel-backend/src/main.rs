@@ -21,6 +21,54 @@ use tracing_subscriber::EnvFilter;
 use crate::config::AppConfig;
 use crate::types::AppState;
 
+/// Pretty-log field formatter that writes only the `message` field.
+/// Structured fields (error, cursor, etc.) are captured by the JSON subscriber
+/// (CloudWatch/Logs Insights) but omitted from terminal output so values
+/// don't appear twice alongside the human-readable message string.
+struct MessageOnlyFields;
+
+impl<'w> tracing_subscriber::fmt::FormatFields<'w> for MessageOnlyFields {
+    fn format_fields<R: tracing_subscriber::field::RecordFields>(
+        &self,
+        mut writer: tracing_subscriber::fmt::format::Writer<'w>,
+        fields: R,
+    ) -> std::fmt::Result {
+        use tracing_subscriber::field::Visit;
+
+        struct MsgVisitor<'a> {
+            writer: &'a mut dyn std::fmt::Write,
+            result: std::fmt::Result,
+        }
+
+        impl Visit for MsgVisitor<'_> {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if self.result.is_err() {
+                    return;
+                }
+                if field.name() == "message" {
+                    self.result = write!(self.writer, "{value:?}");
+                }
+            }
+
+            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+                if self.result.is_err() {
+                    return;
+                }
+                if field.name() == "message" {
+                    self.result = write!(self.writer, "{value}");
+                }
+            }
+        }
+
+        let mut visitor = MsgVisitor {
+            writer: &mut writer,
+            result: Ok(()),
+        };
+        fields.record(&mut visitor);
+        visitor.result
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load .env from project root
@@ -29,22 +77,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = AppConfig::from_env()?;
 
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            EnvFilter::new(format!(
-                "{},sentinel_backend={}",
-                config.crates_log_level, config.sentinel_log_level
-            ))
-        }))
-        .with_ansi(matches!(
-            config.log_format,
-            crate::config::LogFormat::Pretty
-        ));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new(format!(
+            "{},sentinel_backend={}",
+            config.crates_log_level, config.sentinel_log_level
+        ))
+    });
     match config.log_format {
-        crate::config::LogFormat::Pretty => subscriber.init(),
-        crate::config::LogFormat::Json => subscriber.json().init(),
+        crate::config::LogFormat::Pretty => tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_ansi(true)
+            .fmt_fields(MessageOnlyFields)
+            .init(),
+        crate::config::LogFormat::Json => tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_ansi(false)
+            .json()
+            .init(),
     }
-    tracing::info!("SENTINEL starting — streaming from {}", config.sui_grpc_url);
+    tracing::info!(grpc_url = %config.sui_grpc_url, "SENTINEL starting — streaming from {}", config.sui_grpc_url);
 
     let (sse_tx, _) = tokio::sync::broadcast::channel::<String>(256);
 
@@ -70,11 +121,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let gate_count = db::load_gate_names(&db_pool, &mut s.live).await?;
         let struct_count = db::load_structure_types(&db_pool, &mut s.live).await?;
         tracing::info!(
+            character_names = name_count,
+            gate_names = gate_count,
+            structure_types = struct_count,
             "Loaded {name_count} character names, {gate_count} gate names, \
              {struct_count} structure type mappings from DB cache"
         );
         if let Some(cp) = db::load_checkpoint(&db_pool).await? {
-            tracing::info!("Resuming from checkpoint {cp}");
+            tracing::info!(checkpoint = cp, "Resuming from checkpoint {cp}");
             s.last_checkpoint = Some(cp);
         }
     }
@@ -165,7 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = api::router(state.clone(), sse_tx);
 
     let addr = format!("0.0.0.0:{api_port}");
-    tracing::info!("API listening on {addr}");
+    tracing::info!(addr, "API listening on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
 
@@ -198,6 +252,8 @@ async fn health_log_loop(state: Arc<RwLock<AppState>>) {
         // Immediate error on hung stream — surfaces in CloudWatch for alarming
         if stream_lag_secs > STALL_THRESHOLD_SECS {
             tracing::error!(
+                lag_secs = stream_lag_secs,
+                cursor = checkpoint,
                 "gRPC stream may be hung — no checkpoint in {}s (cursor: {checkpoint})",
                 stream_lag_secs
             );
@@ -277,13 +333,13 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
         // Write outside the lock
         for p in &dirty_profiles {
             if let Err(e) = db::upsert_profile(&pool, p).await {
-                tracing::warn!("Failed to persist profile {}: {e}", p.character_item_id);
+                tracing::warn!(character_id = p.character_item_id, error = %e, "Failed to persist profile {}: {e}", p.character_item_id);
             }
         }
 
         for e in &new_events {
             if let Err(e) = db::insert_event(&pool, e).await {
-                tracing::warn!("Failed to persist event: {e}");
+                tracing::warn!(error = %e, "Failed to persist event: {e}");
             }
         }
 
@@ -291,7 +347,7 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
 
         if let Some(cp) = checkpoint {
             if let Err(e) = db::save_checkpoint(&pool, cp).await {
-                tracing::warn!("Failed to save checkpoint: {e}");
+                tracing::warn!(error = %e, "Failed to save checkpoint: {e}");
             }
         }
 
@@ -301,7 +357,7 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
             for (gate_id, name) in &s.live.gate_name_cache {
                 if !persisted_gates.contains(gate_id) {
                     if let Err(e) = db::upsert_gate_name(&pool, gate_id, name).await {
-                        tracing::warn!("Failed to persist gate name {gate_id}: {e}");
+                        tracing::warn!(gate_id, error = %e, "Failed to persist gate name {gate_id}: {e}");
                     } else {
                         persisted_gates.insert(gate_id.clone());
                     }
@@ -313,17 +369,174 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
         if last_event_count > 500 {
             if let Ok(pruned) = db::prune_events(&pool, 1000).await {
                 if pruned > 0 {
-                    tracing::debug!("Pruned {pruned} old events from database");
+                    tracing::debug!(pruned, "Pruned {pruned} old events from database");
                 }
             }
         }
 
         if !dirty_profiles.is_empty() || !new_events.is_empty() {
             tracing::info!(
+                profiles = dirty_profiles.len(),
+                events = new_events.len(),
                 "DB sync: {} profiles, {} events flushed",
                 dirty_profiles.len(),
                 new_events.len()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod logging_tests {
+    use super::MessageOnlyFields;
+    use std::sync::{Arc, Mutex};
+
+    // ---------------------------------------------------------------------------
+    // Shared writer plumbing
+    // ---------------------------------------------------------------------------
+
+    struct SharedBuf(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for SharedBuf {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct MakeBuf(Arc<Mutex<Vec<u8>>>);
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for MakeBuf {
+        type Writer = SharedBuf;
+        fn make_writer(&'a self) -> Self::Writer {
+            SharedBuf(self.0.clone())
+        }
+    }
+
+    fn capture_buf() -> (MakeBuf, Arc<Mutex<Vec<u8>>>) {
+        let buf = Arc::new(Mutex::new(Vec::new()));
+        (MakeBuf(buf.clone()), buf)
+    }
+
+    fn read_buf(buf: &Arc<Mutex<Vec<u8>>>) -> String {
+        String::from_utf8(buf.lock().unwrap().clone()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------------
+    // JSON tests
+    // ---------------------------------------------------------------------------
+
+    /// Structured fields appear as discrete JSON keys in CloudWatch-style output.
+    #[test]
+    fn json_structured_fields_present() {
+        let (writer, buf) = capture_buf();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(writer)
+            .json()
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(sub);
+
+        tracing::info!(cursor = 319672639u64, profiles = 42usize, "Health check");
+
+        let out = read_buf(&buf);
+        let json: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(json["fields"]["message"], "Health check");
+        assert_eq!(json["fields"]["cursor"], 319672639u64);
+        assert_eq!(json["fields"]["profiles"], 42u64);
+        assert_eq!(json["level"], "INFO");
+    }
+
+    /// Error field is a string and message still contains the human-readable text.
+    #[test]
+    fn json_error_field_and_message() {
+        let (writer, buf) = capture_buf();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(writer)
+            .json()
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(sub);
+
+        let err_msg = "connection refused";
+        tracing::error!(
+            error = err_msg,
+            "gRPC stream error: {err_msg}, reconnecting in 2s..."
+        );
+
+        let out = read_buf(&buf);
+        let json: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(json["level"], "ERROR");
+        assert_eq!(json["fields"]["error"], "connection refused");
+        assert!(
+            json["fields"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("gRPC stream error"),
+            "message field missing: {json}"
+        );
+    }
+
+    /// Multiple numeric fields are all present as separate JSON keys.
+    #[test]
+    fn json_publisher_fields() {
+        let (writer, buf) = capture_buf();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(writer)
+            .json()
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(sub);
+
+        tracing::info!(
+            backoff_secs = 30u64,
+            consecutive_failures = 3u32,
+            "Publisher backing off for 30s after 3 failures"
+        );
+
+        let out = read_buf(&buf);
+        let json: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(json["fields"]["backoff_secs"], 30u64);
+        assert_eq!(json["fields"]["consecutive_failures"], 3u64);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Pretty (terminal) test
+    // ---------------------------------------------------------------------------
+
+    /// Pretty logs show only the message string — structured fields must not appear.
+    #[test]
+    fn pretty_log_message_only_no_fields() {
+        let (writer, buf) = capture_buf();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(writer)
+            .fmt_fields(MessageOnlyFields)
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(sub);
+
+        tracing::info!(
+            cursor = 12345u64,
+            profiles = 10usize,
+            "Health — all systems nominal"
+        );
+
+        let out = read_buf(&buf);
+        assert!(
+            out.contains("Health — all systems nominal"),
+            "message should appear: {out}"
+        );
+        assert!(
+            !out.contains("cursor="),
+            "cursor field must not appear in pretty output: {out}"
+        );
+        assert!(
+            !out.contains("profiles="),
+            "profiles field must not appear in pretty output: {out}"
+        );
     }
 }
