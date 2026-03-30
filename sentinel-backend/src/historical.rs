@@ -116,6 +116,17 @@ pub async fn load_historical_killmails(
         let s = state.read().await;
         s.live.profiles.keys().copied().collect()
     };
+
+    // If profiles are already seeded from the DB, skip the full GraphQL scan.
+    // New killmails since the last saved checkpoint are caught by the gRPC replay.
+    if !existing_profiles.is_empty() {
+        tracing::info!(
+            profiles = existing_profiles.len(),
+            "Skipping historical killmail load — profiles already seeded from DB"
+        );
+        return Ok(existing_profiles.len());
+    }
+
     let has_existing_kills = {
         let s = state.read().await;
         s.live.recent_events.iter().any(|e| e.event_type == "kill")
@@ -312,16 +323,16 @@ pub async fn load_character_events(
     );
     tracing::info!("Loading character creation events");
 
-    let has_existing_events = {
+    let existing_profiles = {
         let s = state.read().await;
-        s.live
-            .recent_events
-            .iter()
-            .any(|e| e.event_type == "new_character")
+        s.live.profiles.len()
     };
-    if has_existing_events {
-        tracing::info!("Skipping character events — already have them from DB");
-        return Ok(0);
+    if existing_profiles > 0 {
+        tracing::info!(
+            profiles = existing_profiles,
+            "Skipping character events — profiles already seeded from DB"
+        );
+        return Ok(existing_profiles);
     }
 
     let http = reqwest::Client::new();
@@ -577,7 +588,24 @@ pub async fn load_character_names_graphql(
         return Ok(0);
     }
 
-    tracing::info!("{unresolved}/{total_profiles} characters need names — loading from GraphQL");
+    // If only a handful of names are missing, skip the expensive full-scan and let
+    // Phase 3 (gRPC batch fetch) + the background name_resolver_loop handle them.
+    const GRAPHQL_NAME_SCAN_THRESHOLD: usize = 50;
+    if unresolved <= GRAPHQL_NAME_SCAN_THRESHOLD {
+        tracing::info!(
+            unresolved,
+            total_profiles,
+            threshold = GRAPHQL_NAME_SCAN_THRESHOLD,
+            "Skipping GraphQL name scan — few unresolved names, deferring to gRPC batch"
+        );
+        return Ok(0);
+    }
+
+    tracing::info!(
+        unresolved,
+        total_profiles,
+        "Loading character names from GraphQL"
+    );
 
     let character_type = format!("{}::character::Character", config.world_package_id);
 

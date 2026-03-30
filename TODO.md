@@ -132,7 +132,7 @@ Deadline: March 31, 2026 23:59 UTC
 ## Architecture notes
 
 - World API: `https://world-api-stillness.live.tech.evefrontier.com/v2`
-- Sui GraphQL: `https://sui-testnet.mystenlabs.com/graphql`
+- Sui GraphQL: `https://graphql.testnet.sui.io/graphql`
 - Sui gRPC: `https://fullnode.testnet.sui.io:443`
 - Stillness world package:
   `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c`

@@ -9,7 +9,7 @@ const BACKEND_CONFIG = {
   cratesLogLevel: "warn",
   logFormat: "json",
   suiGrpcUrl: "https://fullnode.testnet.sui.io:443",
-  suiGraphqlUrl: "https://sui-testnet.mystenlabs.com/graphql",
+  suiGraphqlUrl: "https://graphql.testnet.sui.io/graphql",
   worldApiUrl: "https://world-api-stillness.live.tech.evefrontier.com",
 };
 

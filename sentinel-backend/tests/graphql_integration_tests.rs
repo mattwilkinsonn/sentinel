@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use sentinel_backend::config::{AppConfig, LogFormat};
 use sentinel_backend::types::AppState;
 
-const TESTNET_GRAPHQL: &str = "https://sui-testnet.mystenlabs.com/graphql";
+const TESTNET_GRAPHQL: &str = "https://graphql.testnet.sui.io/graphql";
 
 /// World package ID on testnet (EVE Frontier).
 const WORLD_PACKAGE_ID: &str = "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c";
