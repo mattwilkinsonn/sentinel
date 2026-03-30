@@ -172,18 +172,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         names::name_resolver_loop(names_config, names_state).await;
     });
 
-    // Discord bot (optional, requires --features discord + DISCORD_TOKEN)
+    // Discord bot (requires --features discord + DISCORD_TOKEN)
     #[cfg(feature = "discord")]
-    let dc_config = config.clone();
-    #[cfg(feature = "discord")]
-    if dc_config.discord_token.is_some() {
+    let discord_commands_run = {
+        use std::sync::atomic::AtomicU64;
+        let counter = std::sync::Arc::new(AtomicU64::new(0));
         let dc_state = state.clone();
+        let dc_config = config.clone();
         let dc_sse = sse_tx.clone();
         let dc_pool = db_pool.clone();
+        let dc_counter = counter.clone();
         tokio::spawn(async move {
-            discord::run_discord_bot(dc_config, dc_state, dc_sse, dc_pool).await;
+            discord::run_discord_bot(dc_config, dc_state, dc_sse, dc_pool, dc_counter).await;
         });
-    }
+        counter
+    };
 
     // Metadata resolver (system names + tribe affiliations via World API)
     let meta_state = state.clone();
@@ -211,8 +214,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Periodic health summary
     let health_state = state.clone();
+    #[cfg(not(feature = "discord"))]
+    let discord_commands_run = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     tokio::spawn(async move {
-        health_log_loop(health_state).await;
+        health_log_loop(health_state, discord_commands_run).await;
     });
 
     // HTTP API + SSE
@@ -231,7 +236,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///   has arrived in >2 minutes (hung connection — distinct from a dropped connection,
 ///   which the reconnect loop already logs).
 /// - Logs a full health summary every 5 minutes.
-async fn health_log_loop(state: Arc<RwLock<AppState>>) {
+async fn health_log_loop(
+    state: Arc<RwLock<AppState>>,
+    discord_commands_run: Arc<std::sync::atomic::AtomicU64>,
+) {
     const STALL_THRESHOLD_SECS: u64 = 120;
     const SUMMARY_INTERVAL_SECS: u64 = 60;
     const CHECK_INTERVAL_SECS: u64 = 30;
@@ -279,6 +287,7 @@ async fn health_log_loop(state: Arc<RwLock<AppState>>) {
             } else {
                 format!("ok ({}s ago)", stream_lag_secs)
             };
+            let discord_commands = discord_commands_run.load(std::sync::atomic::Ordering::Relaxed);
 
             tracing::info!(
                 grpc_status,
@@ -287,9 +296,10 @@ async fn health_log_loop(state: Arc<RwLock<AppState>>) {
                 profiles,
                 unresolved_profiles = unresolved,
                 buffered_events = events,
+                discord_commands,
                 "Health — gRPC: {stream_status} | cursor: {checkpoint} \
                  | profiles: {profiles} ({unresolved} unresolved) \
-                 | buffered events: {events}"
+                 | buffered events: {events} | discord cmds: {discord_commands}"
             );
         }
     }

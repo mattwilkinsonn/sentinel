@@ -64,7 +64,7 @@ fn test_config() -> AppConfig {
         crates_log_level: tracing::Level::WARN,
         log_format: LogFormat::Json,
         #[cfg(feature = "discord")]
-        discord_token: None,
+        discord_token: "test-token".into(),
     }
 }
 

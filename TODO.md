@@ -10,11 +10,8 @@ Deadline: March 31, 2026 23:59 UTC
       object version fixed, InsufficientGas fixed (0.5 SUI budget)
 - [x] ~~Verify live events flowing~~ — gRPC stream connected,
       Stillness world package ID confirmed
-- [ ] **Debug 8 unresolved character names** — metadata resolver
-      queries last 50 Character objects but these chars are older,
-      not in that window. May need to query by specific item_ids
-      via CharacterCreatedEvent or paginate more aggressively.
-      Some may be structure entities misidentified as characters.
+- [x] ~~Debug unresolved character names~~ — all 5111 names now
+      resolved from DB cache on startup; 0 unresolved confirmed in logs.
 - [x] ~~Verify publisher succeeds~~ — working.
 - [x] ~~Published score persistence~~ — fixed: mark dirty after
       publish so DB sync flushes published_score. Previously

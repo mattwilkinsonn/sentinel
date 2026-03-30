@@ -52,9 +52,9 @@ pub struct AppConfig {
     pub crates_log_level: tracing::Level,
     /// Log output format
     pub log_format: LogFormat,
-    /// Discord bot token (optional, requires "discord" feature)
+    /// Discord bot token (requires "discord" feature + DISCORD_TOKEN env var)
     #[cfg(feature = "discord")]
-    pub discord_token: Option<String>,
+    pub discord_token: String,
 }
 
 fn require(name: &str) -> String {
@@ -92,7 +92,7 @@ impl AppConfig {
                 .parse()
                 .expect("LOG_FORMAT must be 'json' or 'pretty'"),
             #[cfg(feature = "discord")]
-            discord_token: env::var("DISCORD_TOKEN").ok().filter(|s| !s.is_empty()),
+            discord_token: require("DISCORD_TOKEN"),
         })
     }
 }

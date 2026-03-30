@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serenity::Client;
@@ -224,6 +225,7 @@ struct Handler {
     state: Arc<RwLock<AppState>>,
     alert_channels: AlertChannels,
     db_pool: PgPool,
+    commands_run: Arc<AtomicU64>,
 }
 
 #[async_trait]
@@ -303,7 +305,18 @@ impl EventHandler for Handler {
 impl Handler {
     /// Route an incoming slash command to the appropriate handler and reply with an embed.
     async fn handle_command(&self, ctx: &serenity::all::Context, cmd: &CommandInteraction) {
-        let result = match cmd.data.name.as_str() {
+        let command_name = cmd.data.name.as_str();
+        let guild_id = cmd.guild_id.map(|g| g.get());
+        let user = cmd.user.name.as_str();
+        tracing::debug!(
+            command = command_name,
+            guild_id,
+            user,
+            "Discord command received"
+        );
+        self.commands_run.fetch_add(1, Ordering::Relaxed);
+
+        let result = match command_name {
             "threat" => self.cmd_threat(cmd).await,
             "leaderboard" => self.cmd_leaderboard().await,
             "alerts" => {
@@ -694,14 +707,9 @@ pub async fn run_discord_bot(
     state: Arc<RwLock<AppState>>,
     sse_tx: broadcast::Sender<String>,
     db_pool: PgPool,
+    commands_run: Arc<AtomicU64>,
 ) {
-    let token = match &config.discord_token {
-        Some(t) => t.clone(),
-        None => {
-            tracing::warn!("DISCORD_TOKEN not set, skipping Discord bot");
-            return;
-        }
-    };
+    let token = config.discord_token.clone();
 
     // Load alert channels from DB
     let alert_map = match crate::db::load_alert_channels(&db_pool).await {
@@ -728,6 +736,7 @@ pub async fn run_discord_bot(
         state: state.clone(),
         alert_channels: alert_channels.clone(),
         db_pool,
+        commands_run,
     };
 
     let mut client = match Client::builder(&token, intents)
