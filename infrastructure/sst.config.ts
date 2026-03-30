@@ -171,6 +171,45 @@ export default $config({
       name: `sentinel-${$app.stage}-alarms`,
     });
 
+    // Application-level error alarm — watches for ERROR log lines in the backend log group.
+    // dependsOn: [backend] ensures the log group exists before the filter is created.
+    const backendLogGroupName = `/sst/sentinel/${$app.stage}/backend`;
+    const errNs = `Sentinel/${$app.stage}`;
+    const errorMetricFilter = new aws.cloudwatch.LogMetricFilter(
+      "AppErrorMetricFilter",
+      {
+        name: `sentinel-${$app.stage}-app-errors`,
+        logGroupName: backendLogGroupName,
+        pattern: '{ $.level = "ERROR" }',
+        metricTransformation: {
+          namespace: errNs,
+          name: "AppErrors",
+          value: "1",
+          defaultValue: "0",
+          unit: "Count",
+        },
+      },
+      { dependsOn: [backend] },
+    );
+    new aws.cloudwatch.MetricAlarm(
+      "AppErrorAlarm",
+      {
+        name: `sentinel-${$app.stage}-app-errors`,
+        alarmDescription: "Backend logged an ERROR — check CloudWatch Logs",
+        namespace: errNs,
+        metricName: "AppErrors",
+        statistic: "Sum",
+        period: 60,
+        evaluationPeriods: 1,
+        threshold: 1,
+        comparisonOperator: "GreaterThanOrEqualToThreshold",
+        treatMissingData: "notBreaching",
+        alarmActions: [snsAlarmTopic.arn],
+        okActions: [snsAlarmTopic.arn],
+      },
+      { dependsOn: [errorMetricFilter] },
+    );
+
     // 5xx errors (server-side failures)
     new aws.cloudwatch.MetricAlarm("Backend5xxAlarm", {
       name: `sentinel-${$app.stage}-5xx-errors`,
