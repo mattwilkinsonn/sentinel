@@ -269,6 +269,11 @@ async fn health_log_loop(state: Arc<RwLock<AppState>>) {
                 .filter(|id| !s.live.name_cache.contains_key(id))
                 .count();
             let events = s.live.recent_events.len();
+            let grpc_status = if stream_lag_secs > STALL_THRESHOLD_SECS {
+                "hung"
+            } else {
+                "ok"
+            };
             let stream_status = if stream_lag_secs > STALL_THRESHOLD_SECS {
                 format!("hung ({}s)", stream_lag_secs)
             } else {
@@ -276,7 +281,8 @@ async fn health_log_loop(state: Arc<RwLock<AppState>>) {
             };
 
             tracing::info!(
-                grpc_status = %stream_status,
+                grpc_status,
+                stream_lag_secs,
                 cursor = checkpoint,
                 profiles,
                 unresolved_profiles = unresolved,
