@@ -171,9 +171,19 @@ export default $config({
       name: `sentinel-${$app.stage}-alarms`,
     });
 
-    // Application-level error alarm — watches for ERROR log lines in the backend log group.
-    // dependsOn: [backend] ensures the log group exists before the filter is created.
+    // Explicitly create the log group so it exists before the metric filter.
+    // ECS would create it lazily on first log write, but the metric filter needs
+    // it to exist at deploy time. The backend's logging.name pins it to this name.
     const backendLogGroupName = `/sst/sentinel/${$app.stage}/backend`;
+    const backendLogGroup = new aws.cloudwatch.LogGroup(
+      "SentinelBackendLogGroup",
+      {
+        name: backendLogGroupName,
+        retentionInDays: 30,
+      },
+    );
+
+    // Application-level error alarm — watches for ERROR log lines in the backend log group.
     const errNs = `Sentinel/${$app.stage}`;
     const errorMetricFilter = new aws.cloudwatch.LogMetricFilter(
       "AppErrorMetricFilter",
@@ -189,7 +199,7 @@ export default $config({
           unit: "Count",
         },
       },
-      { dependsOn: [backend] },
+      { dependsOn: [backendLogGroup] },
     );
     new aws.cloudwatch.MetricAlarm(
       "AppErrorAlarm",
