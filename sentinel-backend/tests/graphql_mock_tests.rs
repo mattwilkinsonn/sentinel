@@ -68,8 +68,7 @@ fn test_config(graphql_url: &str) -> AppConfig {
         sentinel_log_level: tracing::Level::INFO,
         crates_log_level: tracing::Level::WARN,
         log_format: LogFormat::Pretty,
-        #[cfg(feature = "discord")]
-        discord_token: None,
+        discord_token: "unused".into(),
     }
 }
 

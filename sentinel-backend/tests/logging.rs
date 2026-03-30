@@ -63,7 +63,6 @@ fn test_config() -> AppConfig {
         sentinel_log_level: tracing::Level::DEBUG,
         crates_log_level: tracing::Level::WARN,
         log_format: LogFormat::Json,
-        #[cfg(feature = "discord")]
         discord_token: "test-token".into(),
     }
 }

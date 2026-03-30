@@ -2,7 +2,6 @@ mod api;
 mod config;
 mod db;
 mod demo;
-#[cfg(feature = "discord")]
 mod discord;
 mod google_rpc;
 mod grpc;
@@ -172,8 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         names::name_resolver_loop(names_config, names_state).await;
     });
 
-    // Discord bot (requires --features discord + DISCORD_TOKEN)
-    #[cfg(feature = "discord")]
+    // Discord bot
     let discord_commands_run = {
         use std::sync::atomic::AtomicU64;
         let counter = std::sync::Arc::new(AtomicU64::new(0));
@@ -214,8 +212,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Periodic health summary
     let health_state = state.clone();
-    #[cfg(not(feature = "discord"))]
-    let discord_commands_run = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     tokio::spawn(async move {
         health_log_loop(health_state, discord_commands_run).await;
     });

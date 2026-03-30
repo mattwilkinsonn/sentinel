@@ -455,8 +455,7 @@ async fn process_checkpoint_events_handles_killmail() {
         sentinel_log_level: tracing::Level::INFO,
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
-        #[cfg(feature = "discord")]
-        discord_token: None,
+        discord_token: "unused".into(),
     };
 
     let kill_event_json = serde_json::json!({
@@ -531,8 +530,7 @@ async fn process_checkpoint_events_handles_character_created() {
         sentinel_log_level: tracing::Level::INFO,
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
-        #[cfg(feature = "discord")]
-        discord_token: None,
+        discord_token: "unused".into(),
     };
 
     let event_json = serde_json::json!({
@@ -599,8 +597,7 @@ async fn process_checkpoint_events_filters_wrong_package() {
         sentinel_log_level: tracing::Level::INFO,
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
-        #[cfg(feature = "discord")]
-        discord_token: None,
+        discord_token: "unused".into(),
     };
 
     let checkpoint = sui_rpc::Checkpoint {
@@ -649,8 +646,7 @@ async fn checkpoint_replay_processes_events_across_checkpoints() {
         sentinel_log_level: tracing::Level::INFO,
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
-        #[cfg(feature = "discord")]
-        discord_token: None,
+        discord_token: "unused".into(),
     };
 
     // Create 3 checkpoints with events

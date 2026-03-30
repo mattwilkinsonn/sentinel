@@ -245,7 +245,6 @@ pub async fn upsert_gate_name(pool: &PgPool, gate_id: &str, name: &str) -> Resul
 }
 
 /// Load all guild alert channel mappings from the database.
-#[cfg(feature = "discord")]
 pub async fn load_alert_channels(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<u64, u64>, sqlx::Error> {
@@ -260,7 +259,6 @@ pub async fn load_alert_channels(
 }
 
 /// Set the alert channel for a guild.
-#[cfg(feature = "discord")]
 pub async fn set_alert_channel(
     pool: &PgPool,
     guild_id: u64,
@@ -278,7 +276,6 @@ pub async fn set_alert_channel(
 }
 
 /// Remove the alert channel for a guild.
-#[cfg(feature = "discord")]
 pub async fn clear_alert_channel(pool: &PgPool, guild_id: u64) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM discord_alert_channels WHERE guild_id = $1")
         .bind(guild_id as i64)
