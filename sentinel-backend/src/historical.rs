@@ -743,7 +743,7 @@ async fn resolve_gate_name_graphql(
                 (Some(n), _) => n.to_string(),
                 (None, Some(id)) => format!("Gate #{id}"),
                 _ => {
-                    tracing::debug!("Could not resolve gate {gate_id}");
+                    tracing::debug!(gate_id, "Could not resolve gate {gate_id}");
                     format!("Gate {}", &gate_id[..8.min(gate_id.len())])
                 }
             }
@@ -779,6 +779,7 @@ async fn replay_checkpoints(
         Some(cp) => cp + 1,
         None => {
             tracing::info!(
+                latest_checkpoint = latest,
                 "No saved checkpoint — skipping gRPC replay (latest checkpoint: {latest})"
             );
             return Ok(());
@@ -786,12 +787,21 @@ async fn replay_checkpoints(
     };
 
     if start > latest {
-        tracing::info!("Already caught up at checkpoint {}", start - 1);
+        tracing::info!(
+            checkpoint = start - 1,
+            "Already caught up at checkpoint {}",
+            start - 1
+        );
         return Ok(());
     }
 
     let gap = latest - start + 1;
-    tracing::info!("Replaying {gap} checkpoints ({start}..={latest}) via gRPC");
+    tracing::info!(
+        gap,
+        start,
+        latest,
+        "Replaying {gap} checkpoints ({start}..={latest}) via gRPC"
+    );
 
     let mut client = LedgerServiceClient::new(channel.clone());
     let mut processed = 0u64;
@@ -805,7 +815,7 @@ async fn replay_checkpoints(
             let resp = match crate::sui_client::get_checkpoint(&mut client, cp_seq).await {
                 Ok(r) => r,
                 Err(e) => {
-                    tracing::warn!("Failed to fetch checkpoint {cp_seq}: {e}");
+                    tracing::warn!(checkpoint = cp_seq, error = %e, "Failed to fetch checkpoint {cp_seq}: {e}");
                     continue;
                 }
             };
@@ -839,14 +849,20 @@ async fn replay_checkpoints(
 
         if processed % 1000 == 0 && processed > 0 {
             tracing::info!(
+                processed,
+                gap,
+                events_found,
                 "Historical replay: {processed}/{gap} checkpoints, {events_found} events found"
             );
         }
     }
 
+    let profile_count = state.read().await.live.profiles.len();
     tracing::info!(
-        "Historical replay complete: {processed} checkpoints, {events_found} events found, {} profiles",
-        state.read().await.live.profiles.len()
+        processed,
+        events_found,
+        profiles = profile_count,
+        "Historical replay complete: {processed} checkpoints, {events_found} events found, {profile_count} profiles"
     );
 
     // Post-replay: resolve gate names for any jump events from replay
@@ -891,6 +907,7 @@ async fn resolve_replay_gate_names(state: &Arc<RwLock<AppState>>, channel: Chann
     }
 
     tracing::info!(
+        count = uncached.len(),
         "Resolving {} gate names from replay jump events",
         uncached.len()
     );
@@ -957,6 +974,7 @@ async fn load_character_names_grpc(
     }
 
     tracing::info!(
+        count = unresolved.len(),
         "{} characters still need names — trying gRPC batch fetch",
         unresolved.len()
     );
@@ -994,14 +1012,17 @@ async fn load_character_names_grpc(
                 }
             }
             Err(e) => {
-                tracing::warn!("gRPC batch name resolution failed: {e}");
+                tracing::warn!(error = %e, "gRPC batch name resolution failed: {e}");
             }
         }
     }
 
     let remaining = unresolved.len() - total;
     if remaining > 0 {
-        tracing::info!("{remaining} names deferred to metadata resolver (no cached object IDs)");
+        tracing::info!(
+            count = remaining,
+            "{remaining} names deferred to metadata resolver (no cached object IDs)"
+        );
     }
 
     Ok(total)
@@ -1121,9 +1142,11 @@ pub async fn load_structure_types(
         }
     }
 
+    let type_name_count = state.read().await.live.type_name_cache.len();
     tracing::info!(
-        "Structure type cache loaded: {total} structures, {} type names",
-        state.read().await.live.type_name_cache.len()
+        structures = total,
+        type_names = type_name_count,
+        "Structure type cache loaded: {total} structures, {type_name_count} type names"
     );
     Ok(total)
 }
@@ -1150,13 +1173,13 @@ pub async fn resolve_gate_name(
                 (Some(n), _) => n.to_string(),
                 (None, Some(id)) => format!("Gate #{id}"),
                 _ => {
-                    tracing::debug!("Could not resolve gate {gate_id}");
+                    tracing::debug!(gate_id, "Could not resolve gate {gate_id}");
                     format!("Gate {}", &gate_id[..8.min(gate_id.len())])
                 }
             }
         }
         Err(e) => {
-            tracing::debug!("Failed to query gate {gate_id} via gRPC: {e}");
+            tracing::debug!(gate_id, error = %e, "Failed to query gate {gate_id} via gRPC: {e}");
             format!("Gate {}", &gate_id[..8.min(gate_id.len())])
         }
     };
@@ -1206,6 +1229,7 @@ async fn finalize(state: &Arc<RwLock<AppState>>) {
         .count();
     if unresolved > 0 {
         tracing::info!(
+            unresolved_count = unresolved,
             "{unresolved} characters could not be resolved — will retry via metadata resolver"
         );
     }

@@ -54,6 +54,8 @@ impl WorldApiClient {
         }
 
         tracing::info!(
+            systems = client.system_cache.len(),
+            tribes = client.tribe_cache.len(),
             "World API client loaded {} systems, {} tribes from cache",
             client.system_cache.len(),
             client.tribe_cache.len()

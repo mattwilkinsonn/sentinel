@@ -19,10 +19,10 @@ use sui_rpc::subscription_service_client::SubscriptionServiceClient;
 /// Connect to Sui fullnode and stream checkpoints forever (with reconnect).
 pub async fn stream_checkpoints(config: AppConfig, state: Arc<RwLock<AppState>>) {
     loop {
-        tracing::info!("Connecting to gRPC stream at {}", config.sui_grpc_url);
+        tracing::info!(url = %config.sui_grpc_url, "Connecting to gRPC stream at {}", config.sui_grpc_url);
         match run_stream(&config, &state).await {
             Ok(()) => tracing::warn!("gRPC stream ended cleanly, reconnecting..."),
-            Err(e) => tracing::error!("gRPC stream error: {e}, reconnecting in 2s..."),
+            Err(e) => tracing::error!(error = %e, "gRPC stream error: {e}, reconnecting in 2s..."),
         }
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }

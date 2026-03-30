@@ -78,7 +78,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
     let (admin_key, sender) = match parse_sui_private_key(&config.publisher_private_key) {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!("Failed to parse SUI_PUBLISHER_KEY: {e}");
+            tracing::error!(error = %e, "Failed to parse SUI_PUBLISHER_KEY: {e}");
             return;
         }
     };
@@ -90,6 +90,9 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
             Ok(ch) => match fetch_onchain_scores(ch, &config.threat_registry_id).await {
                 Ok(scores) => {
                     tracing::info!(
+                        sender = %sender,
+                        onchain_scores = scores.len(),
+                        batch_interval_ms = config.publish_interval_ms,
                         "Publisher started — sender: {sender}, {} scores on-chain, \
                              batch_update every {}ms",
                         scores.len(),
@@ -99,13 +102,14 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
                 }
                 Err(e) => {
                     tracing::warn!(
+                        error = %e,
                         "Publisher: initial on-chain fetch failed ({e}), starting empty"
                     );
                     std::collections::HashMap::new()
                 }
             },
             Err(e) => {
-                tracing::warn!("Publisher: initial gRPC connect failed ({e}), starting empty");
+                tracing::warn!(error = %e, "Publisher: initial gRPC connect failed ({e}), starting empty");
                 std::collections::HashMap::new()
             }
         }
@@ -118,6 +122,8 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         let wait = if consecutive_failures > 0 {
             let backoff = interval * 2u32.pow(consecutive_failures.min(4));
             tracing::info!(
+                backoff_secs = backoff.as_secs(),
+                consecutive_failures,
                 "Publisher backing off for {}s after {} failures",
                 backoff.as_secs(),
                 consecutive_failures
@@ -132,7 +138,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         let channel = match connect_grpc(&config.sui_grpc_url).await {
             Ok(ch) => ch,
             Err(e) => {
-                tracing::error!("Publisher: gRPC connect failed: {e}");
+                tracing::error!(error = %e, "Publisher: gRPC connect failed: {e}");
                 consecutive_failures += 1;
                 continue;
             }
@@ -143,13 +149,14 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
             match fetch_onchain_scores(channel.clone(), &config.threat_registry_id).await {
                 Ok(scores) => {
                     tracing::info!(
+                        onchain_scores = scores.len(),
                         "Publisher: re-synced {} on-chain scores after failures",
                         scores.len()
                     );
                     published_scores = scores;
                 }
                 Err(e) => {
-                    tracing::warn!("Publisher: re-sync fetch failed: {e}");
+                    tracing::warn!(error = %e, "Publisher: re-sync fetch failed: {e}");
                     consecutive_failures += 1;
                     continue;
                 }
@@ -185,6 +192,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
         }
 
         tracing::info!(
+            profiles_pending = publishable.len(),
             "Publisher: {} profiles with score changes",
             publishable.len()
         );
@@ -204,7 +212,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
             .await
             {
                 Ok((digest, new_cap)) => {
-                    tracing::info!("Published {} threat scores — tx: {digest}", chunk.len());
+                    tracing::info!(scores_published = chunk.len(), tx_digest = %digest, "Published {} threat scores — tx: {digest}", chunk.len());
                     // Update local cache so we don't re-publish next cycle
                     for p in chunk {
                         published_scores.insert(p.character_item_id, p.threat_score);
@@ -212,7 +220,7 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
                     cap_override = new_cap;
                 }
                 Err(e) => {
-                    tracing::error!("Failed to publish batch: {e}");
+                    tracing::error!(error = %e, "Failed to publish batch: {e}");
                     batch_ok = false;
                     break;
                 }
@@ -543,6 +551,8 @@ async fn publish_batch(
     };
 
     tracing::debug!(
+        tx_bytes = tx_bcs.len(),
+        sender = %sender,
         "Publishing tx via gRPC: {} bytes, sender: {sender}",
         tx_bcs.len(),
     );
@@ -623,7 +633,7 @@ async fn publish_batch(
                         {
                             if let Ok(parsed) = d.parse::<Digest>() {
                                 new_cap = Some((v, parsed));
-                                tracing::debug!("AdminCap updated: v={v}");
+                                tracing::debug!(version = v, "AdminCap updated: v={v}");
                             }
                         }
                     }
@@ -632,6 +642,7 @@ async fn publish_batch(
 
             if new_cap.is_none() {
                 tracing::warn!(
+                    changed_objects = effects.changed_objects.len(),
                     "Could not extract AdminCap from effects ({} changed_objects), will re-resolve next batch",
                     effects.changed_objects.len()
                 );

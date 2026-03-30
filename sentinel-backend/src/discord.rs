@@ -229,7 +229,7 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: serenity::all::Context, ready: Ready) {
-        tracing::info!("Discord bot connected as {}", ready.user.name);
+        tracing::info!(bot_name = %ready.user.name, "Discord bot connected as {}", ready.user.name);
 
         let commands = vec![
             CreateCommand::new("threat")
@@ -276,7 +276,7 @@ impl EventHandler for Handler {
         ];
 
         if let Err(e) = Command::set_global_commands(&ctx.http, commands).await {
-            tracing::error!("Failed to register slash commands: {e}");
+            tracing::error!(error = %e, "Failed to register slash commands: {e}");
         } else {
             tracing::info!("Discord slash commands registered");
         }
@@ -317,7 +317,7 @@ impl Handler {
             let msg = CreateInteractionResponseMessage::new().embed(embed);
             let response = CreateInteractionResponse::Message(msg);
             if let Err(e) = cmd.create_response(&ctx.http, response).await {
-                tracing::error!("Failed to respond to command: {e}");
+                tracing::error!(error = %e, "Failed to respond to command: {e}");
             }
         }
     }
@@ -446,7 +446,7 @@ impl Handler {
                         if let Err(e) =
                             crate::db::set_alert_channel(&self.db_pool, guild_id, ch_id).await
                         {
-                            tracing::error!("Failed to save alert channel: {e}");
+                            tracing::error!(error = %e, "Failed to save alert channel: {e}");
                             CreateEmbed::new()
                                 .title("Error")
                                 .color(0xFF4444)
@@ -454,7 +454,7 @@ impl Handler {
                         } else {
                             // Update in-memory map
                             self.alert_channels.write().await.insert(guild_id, ch_id);
-                            tracing::info!("Alert channel set: guild={guild_id} channel={ch_id}");
+                            tracing::info!(guild = %guild_id, channel = %ch_id, "Alert channel set: guild={guild_id} channel={ch_id}");
                             CreateEmbed::new()
                                 .title("🔔 Alerts configured")
                                 .color(0x44FF88)
@@ -474,14 +474,14 @@ impl Handler {
             }
             Some("clear") => {
                 if let Err(e) = crate::db::clear_alert_channel(&self.db_pool, guild_id).await {
-                    tracing::error!("Failed to clear alert channel: {e}");
+                    tracing::error!(error = %e, "Failed to clear alert channel: {e}");
                     CreateEmbed::new()
                         .title("Error")
                         .color(0xFF4444)
                         .description("Failed to clear alert configuration.")
                 } else {
                     self.alert_channels.write().await.remove(&guild_id);
-                    tracing::info!("Alert channel cleared: guild={guild_id}");
+                    tracing::info!(guild = %guild_id, "Alert channel cleared: guild={guild_id}");
                     CreateEmbed::new()
                         .title("🔕 Alerts disabled")
                         .color(0x808080)
@@ -521,7 +521,7 @@ impl Handler {
             .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
             .await
         {
-            tracing::error!("Failed to respond to alerts command: {e}");
+            tracing::error!(error = %e, "Failed to respond to alerts command: {e}");
         }
     }
 
@@ -579,7 +579,7 @@ impl Handler {
             .create_response(&ctx.http, CreateInteractionResponse::Autocomplete(response))
             .await
         {
-            tracing::error!("Failed to send autocomplete: {e}");
+            tracing::error!(error = %e, "Failed to send autocomplete: {e}");
         }
     }
 }
@@ -665,6 +665,9 @@ async fn alert_loop(
                         let msg = CreateMessage::new().embed(embed.clone());
                         if let Err(e) = channel.send_message(&http, msg).await {
                             tracing::error!(
+                                guild = guild_id,
+                                channel = channel_id,
+                                error = %e,
                                 "Failed to send alert to guild={guild_id} channel={channel_id}: {e}"
                             );
                         }
@@ -672,7 +675,10 @@ async fn alert_loop(
                 }
             }
             Err(broadcast::error::RecvError::Lagged(n)) => {
-                tracing::warn!("Discord alert listener lagged by {n} events");
+                tracing::warn!(
+                    lagged_events = n,
+                    "Discord alert listener lagged by {n} events"
+                );
             }
             Err(broadcast::error::RecvError::Closed) => {
                 tracing::info!("SSE broadcast channel closed, stopping alert listener");
@@ -701,12 +707,16 @@ pub async fn run_discord_bot(
     let alert_map = match crate::db::load_alert_channels(&db_pool).await {
         Ok(map) => {
             if !map.is_empty() {
-                tracing::info!("Loaded {} guild alert channel(s) from database", map.len());
+                tracing::info!(
+                    guild_count = map.len(),
+                    "Loaded {} guild alert channel(s) from database",
+                    map.len()
+                );
             }
             map
         }
         Err(e) => {
-            tracing::error!("Failed to load alert channels from DB: {e}");
+            tracing::error!(error = %e, "Failed to load alert channels from DB: {e}");
             HashMap::new()
         }
     };
@@ -726,7 +736,7 @@ pub async fn run_discord_bot(
     {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!("Failed to create Discord client: {e}");
+            tracing::error!(error = %e, "Failed to create Discord client: {e}");
             return;
         }
     };
@@ -740,6 +750,6 @@ pub async fn run_discord_bot(
     });
 
     if let Err(e) = client.start().await {
-        tracing::error!("Discord client error: {e}");
+        tracing::error!(error = %e, "Discord client error: {e}");
     }
 }

@@ -220,6 +220,11 @@ async fn health_log_loop(state: Arc<RwLock<AppState>>) {
             };
 
             tracing::info!(
+                grpc_status = %stream_status,
+                cursor = checkpoint,
+                profiles,
+                unresolved_profiles = unresolved,
+                buffered_events = events,
                 "Health — gRPC: {stream_status} | cursor: {checkpoint} \
                  | profiles: {profiles} ({unresolved} unresolved) \
                  | buffered events: {events}"

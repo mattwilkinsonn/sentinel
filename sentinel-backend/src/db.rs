@@ -84,6 +84,8 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
     }
 
     tracing::info!(
+        profiles = store.profiles.len(),
+        events = store.recent_events.len(),
         "Loaded {} profiles and {} events from database",
         store.profiles.len(),
         store.recent_events.len()

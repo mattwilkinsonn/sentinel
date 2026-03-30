@@ -286,6 +286,7 @@ const SYSTEMS: &[&str] = &[
 /// Called once at startup so the dashboard is immediately usable before historical data loads.
 pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
     tracing::info!(
+        profile_count = DEMO_CHARACTERS.len(),
         "DEMO MODE — seeding {} threat profiles",
         DEMO_CHARACTERS.len()
     );
@@ -418,6 +419,8 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
         .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
 
     tracing::info!(
+        profiles = s.demo.profiles.len(),
+        events = s.demo.recent_events.len(),
         "Demo data seeded: {} profiles, {} events",
         s.demo.profiles.len(),
         s.demo.recent_events.len()
