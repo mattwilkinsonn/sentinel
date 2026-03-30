@@ -158,7 +158,7 @@ export default $config({
 
     // CloudWatch: operational alarms + dashboard
     // (The auto-scaling alarms are noise — these are the real ones.)
-    const region = aws.getRegionOutput().name;
+    const region = aws.getRegionOutput().region;
     const albArnSuffix = backend.nodes.loadBalancer.arnSuffix;
     const ecsClusterName = cluster.nodes.cluster.name;
     const ecsServiceName = backend.nodes.service.name;
