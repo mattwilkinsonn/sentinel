@@ -109,6 +109,10 @@ export default $config({
       cluster,
       architecture: "arm64",
       image: `ghcr.io/mattwilkinsonn/sentinel/backend:${env.imageTag}`,
+      logging: {
+        // Pin the log group name so we can reference it in metric filters and alarms.
+        name: `/sst/sentinel/${$app.stage}/backend`,
+      },
       health: {
         command: [
           "CMD-SHELL",
@@ -159,6 +163,7 @@ export default $config({
     // CloudWatch: operational alarms + dashboard
     // (The auto-scaling alarms are noise — these are the real ones.)
     const region = aws.getRegionOutput().region;
+    const logGroupName = `/sst/sentinel/${$app.stage}/backend`;
     const albArnSuffix = backend.nodes.loadBalancer.arnSuffix;
     const ecsClusterName = cluster.nodes.cluster.name;
     const ecsServiceName = backend.nodes.service.name;
@@ -218,14 +223,52 @@ export default $config({
       okActions: [snsAlarmTopic.arn],
     });
 
+    // Application ERROR logs (gRPC hung, publisher failures, etc.)
+    const errorMetricNamespace = `Sentinel/${$app.stage}`;
+    const errorMetricFilter = new aws.cloudwatch.LogMetricFilter(
+      "AppErrorMetricFilter",
+      {
+        name: `sentinel-${$app.stage}-app-errors`,
+        logGroupName,
+        pattern: '{ $.level = "ERROR" }',
+        metricTransformation: {
+          namespace: errorMetricNamespace,
+          name: "AppErrors",
+          value: "1",
+          defaultValue: "0",
+          unit: "Count",
+        },
+      },
+    );
+
+    new aws.cloudwatch.MetricAlarm(
+      "AppErrorAlarm",
+      {
+        name: `sentinel-${$app.stage}-app-errors`,
+        alarmDescription: "Backend logged an ERROR — check CloudWatch Logs",
+        namespace: errorMetricNamespace,
+        metricName: "AppErrors",
+        statistic: "Sum",
+        period: 60,
+        evaluationPeriods: 1,
+        threshold: 1,
+        comparisonOperator: "GreaterThanOrEqualToThreshold",
+        treatMissingData: "notBreaching",
+        alarmActions: [snsAlarmTopic.arn],
+        okActions: [snsAlarmTopic.arn],
+      },
+      { dependsOn: [errorMetricFilter] },
+    );
+
     // CloudWatch Dashboard
     const dashboardBody = $resolve([
       albArnSuffix,
       ecsClusterName,
       ecsServiceName,
       region,
-    ]).apply(([alb, ecsCluster, ecsSvc, reg]) =>
-      JSON.stringify({
+    ]).apply(([alb, ecsCluster, ecsSvc, reg]) => {
+      const errNs = `Sentinel/${$app.stage}`;
+      return JSON.stringify({
         widgets: [
           {
             type: "metric",
@@ -392,9 +435,29 @@ export default $config({
               view: "timeSeries",
             },
           },
+          {
+            type: "metric",
+            x: 0,
+            y: 18,
+            width: 24,
+            height: 6,
+            properties: {
+              title: "Application Errors (ERROR log level)",
+              region: reg,
+              metrics: [
+                [
+                  errNs,
+                  "AppErrors",
+                  { stat: "Sum", color: "#d62728", label: "Errors" },
+                ],
+              ],
+              period: 60,
+              view: "timeSeries",
+            },
+          },
         ],
-      }),
-    );
+      });
+    });
 
     new aws.cloudwatch.Dashboard("SentinelDashboard", {
       dashboardName: `sentinel-${$app.stage}`,

@@ -561,11 +561,13 @@ pub async fn load_character_names_graphql(
     let (total_profiles, unresolved) = {
         let s = state.read().await;
         let total = s.live.profiles.len();
+        // Use name_cache presence (not p.name) so that permanently-unresolvable
+        // characters (marked with "" in the cache after a prior scan) are not retried.
         let unresolved = s
             .live
             .profiles
-            .values()
-            .filter(|p| p.name.is_none())
+            .keys()
+            .filter(|id| !s.live.name_cache.contains_key(id))
             .count();
         (total, unresolved)
     };
@@ -680,6 +682,34 @@ pub async fn load_character_names_graphql(
     }
 
     tracing::info!("Character name load (GraphQL) complete: {total} names resolved");
+
+    // Mark any characters that were scanned but still have no name as permanently
+    // unresolvable (deleted accounts, test accounts with no name in the API).
+    // Storing "" in name_cache + DB means subsequent startups skip them.
+    {
+        let mut s = state.write().await;
+        let unresolvable: Vec<u64> = s
+            .live
+            .profiles
+            .keys()
+            .filter(|id| !s.live.name_cache.contains_key(id))
+            .copied()
+            .collect();
+        let count = unresolvable.len();
+        for id in &unresolvable {
+            s.live.name_cache.insert(*id, String::new());
+        }
+        drop(s);
+        for id in &unresolvable {
+            let _ = crate::db::upsert_character_name(pool, *id, "").await;
+        }
+        if count > 0 {
+            tracing::info!(
+                "Marked {count} characters as permanently unresolvable — will skip on next startup"
+            );
+        }
+    }
+
     Ok(total)
 }
 
@@ -916,9 +946,9 @@ async fn load_character_names_grpc(
         let s = state.read().await;
         s.live
             .profiles
-            .values()
-            .filter(|p| p.name.is_none())
-            .map(|p| p.character_item_id)
+            .keys()
+            .filter(|id| !s.live.name_cache.contains_key(id))
+            .copied()
             .collect()
     };
 

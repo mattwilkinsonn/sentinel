@@ -19,7 +19,9 @@ pub async fn resolve_pending_names(config: &AppConfig, state: &Arc<RwLock<AppSta
         s.live
             .profiles
             .values()
-            .filter(|p| p.name.is_none())
+            // Use name_cache presence (not p.name) to skip permanently-unresolvable
+            // characters that were marked "" by the historical loader.
+            .filter(|p| !s.live.name_cache.contains_key(&p.character_item_id))
             .filter_map(|p| {
                 s.live
                     .object_id_cache

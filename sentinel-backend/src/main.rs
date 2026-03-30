@@ -155,6 +155,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db_sync_loop(sync_pool, sync_state, initial_event_count).await;
     });
 
+    // Periodic health summary
+    let health_state = state.clone();
+    tokio::spawn(async move {
+        health_log_loop(health_state).await;
+    });
+
     // HTTP API + SSE
     let app = api::router(state.clone(), sse_tx);
 
@@ -164,6 +170,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Periodic health monitor.
+/// - Checks gRPC stream staleness every 30s; warns immediately if no checkpoint
+///   has arrived in >2 minutes (hung connection — distinct from a dropped connection,
+///   which the reconnect loop already logs).
+/// - Logs a full health summary every 5 minutes.
+async fn health_log_loop(state: Arc<RwLock<AppState>>) {
+    const STALL_THRESHOLD_SECS: u64 = 120;
+    const SUMMARY_INTERVAL_SECS: u64 = 60;
+    const CHECK_INTERVAL_SECS: u64 = 30;
+
+    let mut ticks: u64 = 0;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(CHECK_INTERVAL_SECS)).await;
+        ticks += 1;
+
+        let s = state.read().await;
+
+        let checkpoint = s.last_checkpoint.unwrap_or(0);
+        let stream_lag_secs = s
+            .last_checkpoint_at
+            .map(|t| t.elapsed().as_secs())
+            .unwrap_or(u64::MAX);
+
+        // Immediate error on hung stream — surfaces in CloudWatch for alarming
+        if stream_lag_secs > STALL_THRESHOLD_SECS {
+            tracing::error!(
+                "gRPC stream may be hung — no checkpoint in {}s (cursor: {checkpoint})",
+                stream_lag_secs
+            );
+        }
+
+        // Full summary every 5 minutes
+        if ticks % (SUMMARY_INTERVAL_SECS / CHECK_INTERVAL_SECS) == 0 {
+            let profiles = s.live.profiles.len();
+            let unresolved = s
+                .live
+                .profiles
+                .keys()
+                .filter(|id| !s.live.name_cache.contains_key(id))
+                .count();
+            let events = s.live.recent_events.len();
+            let stream_status = if stream_lag_secs > STALL_THRESHOLD_SECS {
+                format!("hung ({}s)", stream_lag_secs)
+            } else {
+                format!("ok ({}s ago)", stream_lag_secs)
+            };
+
+            tracing::info!(
+                "Health — gRPC: {stream_status} | cursor: {checkpoint} \
+                 | profiles: {profiles} ({unresolved} unresolved) \
+                 | buffered events: {events}"
+            );
+        }
+    }
 }
 
 /// Background loop that flushes dirty live profiles and checkpoint to Postgres.

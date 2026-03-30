@@ -67,12 +67,16 @@ async fn run_stream(
             process_checkpoint(config, state, &checkpoint, cursor).await;
         }
 
-        // Update cursor
-        state.write().await.last_checkpoint = Some(cursor);
+        // Update cursor and heartbeat timestamp
+        {
+            let mut s = state.write().await;
+            s.last_checkpoint = Some(cursor);
+            s.last_checkpoint_at = Some(std::time::Instant::now());
+        }
 
         // Heartbeat every 100 checkpoints
         if checkpoint_count % 100 == 0 {
-            tracing::info!(
+            tracing::debug!(
                 "gRPC stream alive — processed {checkpoint_count} checkpoints, cursor={cursor}"
             );
         }

@@ -167,6 +167,8 @@ pub struct AppState {
     pub live: DataStore,
     /// Last processed checkpoint cursor
     pub last_checkpoint: Option<u64>,
+    /// Wall-clock time when the last checkpoint was processed (for stream health checks)
+    pub last_checkpoint_at: Option<std::time::Instant>,
     /// SSE broadcast channel sender
     pub sse_tx: Option<tokio::sync::broadcast::Sender<String>>,
 }
