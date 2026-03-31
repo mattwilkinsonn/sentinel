@@ -6,14 +6,13 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use sentinel_backend::config::AppConfig;
+use sentinel_backend::config::{AppConfig, LogFormat};
 use sentinel_backend::types::AppState;
 
-const TESTNET_GRAPHQL: &str = "https://sui-testnet.mystenlabs.com/graphql";
+const TESTNET_GRAPHQL: &str = "https://graphql.testnet.sui.io/graphql";
 
 /// World package ID on testnet (EVE Frontier).
-const WORLD_PACKAGE_ID: &str =
-    "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c";
+const WORLD_PACKAGE_ID: &str = "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c";
 
 fn testnet_config() -> AppConfig {
     AppConfig {
@@ -21,13 +20,19 @@ fn testnet_config() -> AppConfig {
         sui_graphql_url: TESTNET_GRAPHQL.into(),
         sentinel_package_id: String::new(),
         threat_registry_id: String::new(),
-        admin_private_key: String::new(),
+        publisher_private_key: String::new(),
         world_package_id: WORLD_PACKAGE_ID.into(),
         bounty_board_package_id: String::new(),
         publish_interval_ms: 30_000,
+        publish_score_threshold_bp: 100,
         api_port: 3001,
         database_url: "unused".into(),
         world_api_url: "unused".into(),
+        sentinel_log_level: tracing::Level::INFO,
+        crates_log_level: tracing::Level::WARN,
+        log_format: LogFormat::Pretty,
+        discord_token: "unused".into(),
+        max_recent_events: 1000,
     }
 }
 
@@ -60,7 +65,11 @@ async fn real_graphql_load_character_events() {
 
     println!("Loaded {count} character creation events from testnet");
     let s = state.read().await;
-    println!("Profiles: {}, new_pilot_events: {}", s.live.profiles.len(), s.live.new_pilot_events.len());
+    println!(
+        "Profiles: {}, new_pilot_events: {}",
+        s.live.profiles.len(),
+        s.live.new_pilot_events.len()
+    );
 }
 
 #[tokio::test]
@@ -75,7 +84,11 @@ async fn real_graphql_load_jump_events() {
 
     println!("Loaded {count} jump events from testnet");
     let s = state.read().await;
-    println!("Profiles: {}, recent_events: {}", s.live.profiles.len(), s.live.recent_events.len());
+    println!(
+        "Profiles: {}, recent_events: {}",
+        s.live.profiles.len(),
+        s.live.recent_events.len()
+    );
 }
 
 #[tokio::test]
@@ -93,8 +106,8 @@ async fn real_graphql_load_character_names() {
         return;
     }
 
-    let pool = sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid")
-        .unwrap();
+    let pool =
+        sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid").unwrap();
 
     let count = sentinel_backend::historical::load_character_names_graphql(&config, &state, &pool)
         .await
@@ -102,7 +115,12 @@ async fn real_graphql_load_character_names() {
 
     println!("Resolved {count} character names from testnet");
     let s = state.read().await;
-    let resolved = s.live.profiles.values().filter(|p| !p.name.starts_with("Pilot #")).count();
+    let resolved = s
+        .live
+        .profiles
+        .values()
+        .filter(|p| p.name.is_some())
+        .count();
     println!("Resolved names: {resolved}/{}", s.live.profiles.len());
 }
 
@@ -119,7 +137,11 @@ async fn real_graphql_endpoint_responds() {
         .await
         .unwrap();
 
-    assert!(resp.status().is_success(), "GraphQL endpoint returned {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "GraphQL endpoint returned {}",
+        resp.status()
+    );
     let json: serde_json::Value = resp.json().await.unwrap();
     let seq = json["data"]["checkpoint"]["sequenceNumber"]
         .as_u64()

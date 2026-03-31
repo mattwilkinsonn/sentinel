@@ -1,6 +1,7 @@
 # SENTINEL — EVE Frontier Threat Intelligence Network
 
 export PATH := env("HOME") / ".bun/bin:" + env("HOME") / ".local/bin:" + env("HOME") / ".cargo/bin:" + env("PATH")
+export DATABASE_URL := "postgresql://sentinel:sentinel@localhost/sentinel"
 
 # Default: list all recipes
 default:
@@ -48,7 +49,7 @@ backend-test:
 
 # Run backend integration tests (requires Postgres)
 backend-test-integration: db
-    cd sentinel-backend && DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel cargo test --test db_integration
+    cd sentinel-backend && cargo test --test db_integration --test graphql_mock_tests --test grpc_mock_tests --test logging
 
 # Run integration tests against real Sui testnet (gRPC + GraphQL)
 backend-test-live:
@@ -58,8 +59,8 @@ backend-test-live:
 backend-build:
     cd sentinel-backend && cargo build --release
 
-# Run backend service (watches for changes)
-backend-run:
+# Run backend service (watches for changes, starts Postgres if needed)
+backend-run: db
     cd sentinel-backend && cargo watch -x run
 
 # === Frontend ===
@@ -70,7 +71,9 @@ frontend-install:
 
 # Run frontend dev server (waits for backend if not ready)
 frontend-dev:
+    @echo "Waiting for backend on :3001..."
     @until curl -sf http://localhost:3001/api/health > /dev/null 2>&1; do sleep 1; done
+    @echo "Backend ready — starting frontend dev server..."
     cd frontend && bun run dev
 
 # Build frontend for production
@@ -141,10 +144,18 @@ protos-install:
 # Install all dependencies
 install: frontend-install scripts-install protos-install
 
-# Run all tests
-test: backend-test frontend-test contracts-test
+# Run all tests in parallel with mprocs (each suite in its own pane)
+test:
+    mprocs \
+      --names "unit,integration,live,frontend,contracts" \
+      "just backend-test" \
+      "just backend-test-integration" \
+      "just backend-test-live" \
+      "just frontend-test" \
+      "just contracts-test"
 
-# Build everything
+# Build everything (parallel)
+[parallel]
 build: contracts-build backend-build frontend-build
 
 # === Deploy ===
@@ -177,9 +188,9 @@ db-reset:
     docker compose up postgres -d
 
 # Run backend + frontend dev servers (starts Postgres automatically)
-dev: db
+dev:
     @echo "Starting backend on :3001 and frontend on :5173..."
-    @DATABASE_URL=postgresql://sentinel:sentinel@localhost/sentinel just backend-run &
+    @just backend-run &
     @echo "Waiting for backend..."
     @until curl -sf http://localhost:3001/api/health > /dev/null 2>&1; do sleep 1; done
     @echo "Backend ready!"
@@ -191,3 +202,7 @@ dev-docker:
 
 # Alias for frontend dev.
 dev-frontend: frontend-dev
+
+dev-backend: backend-run
+
+backend-dev: backend-run

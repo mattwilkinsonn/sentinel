@@ -6,43 +6,64 @@ import { Tooltip } from "../Tooltip";
 import type { RawEvent, ThreatProfile } from "../types";
 
 type FeedViewProps = {
+  /** Pre-filtered events (name-resolution filter applied by the parent). */
   events: RawEvent[];
   profiles: ThreatProfile[];
+  /** character_item_id → name lookup for event formatting. */
   names?: Record<string, string>;
+  /** system_id → display name lookup. */
   systems?: Record<string, string>;
   loading?: boolean;
 };
 
+/** ID-to-name resolution helpers passed into event format functions. */
 type Lookups = {
+  /** Resolves a character ID to a display name; returns `"?"` for nullish input. */
   n: (id: unknown) => string;
+  /** Resolves a system ID to a display name; falls back to the raw ID string. */
   sys: (id: unknown) => string;
 };
 
+/** Full rendering descriptor for one event type in the expanded feed view. */
 type EventDisplay = {
   icon: Component<{ size?: number; class?: string }>;
+  /** Tailwind text-colour utility applied to the icon and message text. */
   color: string;
+  /** CSS colour value used for the left accent border on each event row. */
   borderColor: string;
+  /** Generates the one-line human-readable summary for a given event payload. */
   format: (data: Record<string, unknown>, l: Lookups) => string;
 };
 
+/**
+ * Full event-type registry for the FeedView. Compared to the sidebar
+ * `SentinelFeed`, this version includes `score_change` and `gate_blocked`
+ * entries with more descriptive format strings. Unknown types fall back to
+ * the `kill` entry at render time.
+ */
 const eventConfig: Record<string, EventDisplay> = {
   kill: {
     icon: Skull,
     color: "text-accent-red",
     borderColor: "var(--color-accent-red)",
     format: (d, l) =>
-      `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
+      d.killed_by_structure
+        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} killed ${l.n(d.target_item_id)}`
+        : `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
   },
-  structure_kill: {
+  structure_destroyed: {
     icon: Zap,
     color: "text-accent-orange",
     borderColor: "var(--color-accent-orange)",
-    format: (d, l) => `${l.n(d.killer_character_id)} destroyed a structure`,
+    format: (d, l) =>
+      d.killed_by_structure
+        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} destroyed a structure`
+        : `${l.n(d.killer_character_id)} destroyed a structure`,
   },
   jump: {
     icon: Navigation,
-    color: "text-accent-purple",
-    borderColor: "var(--color-accent-purple)",
+    color: "text-accent-indigo",
+    borderColor: "var(--color-accent-indigo)",
     format: (d, l) =>
       d.source_gate && d.dest_gate
         ? `${l.n(d.character_id)} jumped ${d.source_gate} → ${d.dest_gate}`
@@ -98,6 +119,11 @@ const eventConfig: Record<string, EventDisplay> = {
   },
 };
 
+/**
+ * Display order for the filter chip row above the event list. Each entry
+ * maps to a key in `eventConfig` and carries singular/plural labels and a
+ * tooltip explaining the event type to the user.
+ */
 const EVENT_ORDER = [
   {
     key: "kill",
@@ -107,11 +133,11 @@ const EVENT_ORDER = [
       "Player killed another player in combat. Click to filter events by kills.",
   },
   {
-    key: "structure_kill",
-    singular: "structure kill",
-    plural: "structure kills",
+    key: "structure_destroyed",
+    singular: "structure destroyed",
+    plural: "structures destroyed",
     tooltip:
-      "Player destroyed a structure (SSU, gate, etc). Click to filter events by structure kills.",
+      "A structure was destroyed (SSU, gate, etc). Click to filter events by structure kills.",
   },
   {
     key: "jump",
@@ -164,6 +190,11 @@ const EVENT_ORDER = [
   },
 ] as const;
 
+/**
+ * Returns a short relative-time string ("just now", "42s ago", "3m ago", etc.).
+ * Resolves at second granularity for the first minute, then minute/hour/day.
+ * Returns an empty string for a falsy timestamp.
+ */
 function timeAgo(timestampMs: number): string {
   if (!timestampMs) return "";
   const diff = Date.now() - timestampMs;
@@ -174,6 +205,7 @@ function timeAgo(timestampMs: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+/** Formats a millisecond timestamp as a locale-aware HH:MM:SS string for the event list column. */
 function formatTime(timestampMs: number): string {
   if (!timestampMs) return "";
   const d = new Date(timestampMs);
@@ -184,6 +216,15 @@ function formatTime(timestampMs: number): string {
   });
 }
 
+/**
+ * Full-page intel feed with event-type filter chips and expandable event rows.
+ * Displays up to 200 events per filter. Clicking a chip toggles filtering by
+ * that event type; clicking again clears the filter. Clicking an event row
+ * expands a raw-data detail panel showing all payload fields.
+ *
+ * Timestamps are refreshed every 5 seconds; events less than 5 seconds old
+ * receive the `event-new` highlight class.
+ */
 export function FeedView(props: FeedViewProps) {
   const [filter, setFilter] = createSignal<string | null>(null);
   const [expandedIdx, setExpandedIdx] = createSignal<number | null>(null);
@@ -238,11 +279,19 @@ export function FeedView(props: FeedViewProps) {
             const shown = filter()
               ? filteredEvents().length
               : props.events.length;
-            const label = filter()
-              ? `${shown} ${filter()?.replace("_", " ")}`
-              : `${shown} total`;
+            const filterItem = EVENT_ORDER.find((e) => e.key === filter());
+            const noun = filterItem
+              ? shown === 1
+                ? filterItem.singular
+                : filterItem.plural
+              : "total";
+            const label = `${shown} ${noun}`;
             return `${label} · ${recent} last 24h`;
           })()}
+        </span>
+        <span class="text-text-muted text-sm">·</span>
+        <span class="text-[10px] tracking-wider text-[rgba(17,24,39,0.35)]">
+          CLICK A CARD TO FILTER BY TYPE
         </span>
       </h3>
 
@@ -261,10 +310,10 @@ export function FeedView(props: FeedViewProps) {
               <button
                 type="button"
                 onClick={() => setFilter(isActive() ? null : item.key)}
-                class={`glass-card p-2 flex flex-col items-center justify-center gap-1 bg-transparent transition-all w-full ${
-                  isActive() ? "border-accent-cyan" : "border-border-default"
+                style={`height:6.5rem; --card-color: ${config.borderColor}`}
+                class={`stat-nav-card glass-card p-2 flex flex-col items-center justify-center gap-1 bg-transparent transition-all w-full ${
+                  isActive() ? "stat-nav-active" : "border-border-default"
                 }`}
-                style="height:6.5rem"
               >
                 <Dynamic
                   component={config.icon}

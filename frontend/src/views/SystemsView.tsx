@@ -5,21 +5,43 @@ import type { ThreatProfile } from "../types";
 import { getThreatColor, getThreatColorClass, getThreatTier } from "../types";
 
 type SystemsViewProps = {
+  /** All tracked profiles; the component groups them by `last_seen_system` client-side. */
   profiles: ThreatProfile[];
+  /** Shows a loading spinner while the initial data fetch is in progress. */
   loading?: boolean;
 };
 
+/**
+ * Aggregated intelligence for one solar system, derived client-side from the
+ * `last_seen_system` field of all tracked profiles.
+ */
 type SystemInfo = {
+  /** Raw system ID string from the on-chain data. */
   id: string;
+  /** Human-readable name, resolved from any profile that has `last_seen_system_name` set. */
   displayName: string;
+  /** Number of tracked pilots last seen in this system. */
   characterCount: number;
+  /** Sum of threat scores (×100) for all pilots in this system. Used for sort order and colour. */
   totalThreat: number;
+  /** Average threat score (×100), rounded. */
   avgThreat: number;
+  /** Sum of all-time kill counts for pilots last seen in this system. */
   totalKills: number;
+  /** Profile with the highest kill count in this system. */
   topKiller: ThreatProfile | null;
+  /** Profiles sorted descending by kill count (used for the expanded list). */
   profiles: ThreatProfile[];
 };
 
+/**
+ * Groups all tracked profiles by their last-seen solar system and renders a
+ * ranked list sorted by cumulative threat score. Clicking a system card expands
+ * it to list up to 10 individual pilots within that system.
+ *
+ * The tier colour applied to each card is based on the system's combined threat
+ * (i.e. `getThreatTier(totalThreat)`), not the average.
+ */
 export function SystemsView(props: SystemsViewProps) {
   const [expanded, setExpanded] = createSignal<string | null>(null);
 

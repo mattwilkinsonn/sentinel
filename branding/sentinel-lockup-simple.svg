@@ -1,0 +1,15 @@
+<svg width="560" height="160" viewBox="0 0 560 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon scaled ~2.2x, vertically centered in 160px height -->
+  <g transform="translate(20, 12) scale(2.35)">
+    <path d="M28 3 L50 11 L50 33 L28 55 L6 33 L6 11 Z" stroke="#5b21b6" stroke-width="2.5" stroke-linejoin="round" fill="none"/>
+    <path d="M28 13 L42 19 L42 31 L28 43 L14 31 L14 19 Z" stroke="#7c3aed" stroke-width="1.2" stroke-linejoin="round" fill="none" opacity="0.4"/>
+    <line x1="28" y1="3" x2="28" y2="22" stroke="#5b21b6" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="28" y1="22" x2="19" y2="31" stroke="#5b21b6" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="28" y1="22" x2="37" y2="31" stroke="#5b21b6" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="19" y1="31" x2="19" y2="40" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+    <line x1="37" y1="31" x2="37" y2="40" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+    <circle cx="28" cy="22" r="3.5" fill="#5b21b6"/>
+  </g>
+  <!-- Wordmark vertically centered -->
+  <text x="178" y="103" font-family="Space Grotesk, system-ui, sans-serif" font-size="64" font-weight="900" letter-spacing="8" fill="#5b21b6">SENTINEL</text>
+</svg>

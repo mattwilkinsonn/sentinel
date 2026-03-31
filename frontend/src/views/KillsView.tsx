@@ -4,12 +4,22 @@ import { LoadingState } from "../LoadingState";
 import type { ThreatProfile } from "../types";
 
 type KillsViewProps = {
+  /** Full list of tracked threat profiles; sorted client-side into the two ranking panels. */
   profiles: ThreatProfile[];
+  /** Called when a row is expanded; passed up to allow cross-view character selection if needed. */
   onSelect: (id: number) => void;
+  /** Currently selected character ID — kept for API consistency but not used for inline cards here. */
   selectedId: number | null;
+  /** Shows a loading spinner while the initial data fetch is in progress. */
   loading?: boolean;
 };
 
+/**
+ * Two-panel kill statistics view: "Most Active (24H)" sorted by
+ * `recent_kills_24h`, and "All-Time Kills" sorted by `kill_count`.
+ * Each panel shows the top 10 pilots as expandable rows with a compact stat
+ * grid when opened. The two expand states are independent of each other.
+ */
 export function KillsView(props: KillsViewProps) {
   const byKills = () =>
     [...props.profiles].sort((a, b) => b.kill_count - a.kill_count);
@@ -30,7 +40,7 @@ export function KillsView(props: KillsViewProps) {
       <h3 class="text-lg tracking-wider" style="margin-bottom:1rem">
         KILL STATISTICS
         <span class="text-text-muted text-sm ml-2">
-          {totalKills()} total · {totalRecent()} last 24h
+          {totalKills()} total · {totalRecent()} last 7d
         </span>
       </h3>
 
@@ -47,7 +57,7 @@ export function KillsView(props: KillsViewProps) {
           <div class="flex items-center gap-2 mb-4">
             <Clock size={16} class="text-accent-red" />
             <h4 class="text-sm tracking-wider text-accent-red">
-              MOST ACTIVE (24H)
+              MOST ACTIVE (7D)
             </h4>
           </div>
           <div class="flex flex-col gap-2">
@@ -65,7 +75,7 @@ export function KillsView(props: KillsViewProps) {
                         isExp() ? null : profile.character_item_id,
                       )
                     }
-                    statLabel="kills 24h"
+                    statLabel="kills 7d"
                     statValue={profile.recent_kills_24h}
                     statColor="text-accent-red"
                     extra={
@@ -131,14 +141,27 @@ export function KillsView(props: KillsViewProps) {
 
 import type { JSX } from "solid-js";
 
+/**
+ * A single pilot row that can be expanded to show a compact stat grid.
+ * The primary statistic (`statValue` / `statLabel`) is shown prominently on the
+ * right; `extra` renders additional context inline (e.g. total kills, K/D).
+ */
 function ExpandableRow(props: {
+  /** The threat profile whose data is displayed in this row. */
   profile: ThreatProfile;
+  /** 1-based position in the ranked list, displayed as `#N`. */
   rank: number;
+  /** When true, the detail stat grid is shown below the summary row. */
   isExpanded: boolean;
+  /** Toggles the expanded state; called when the row button is clicked. */
   onClick: () => void;
+  /** Label for the headline stat, e.g. `"kills 24h"`. */
   statLabel: string;
+  /** Numeric value of the headline stat. */
   statValue: number;
+  /** Tailwind text-colour class for the headline stat. */
   statColor: string;
+  /** Optional extra badges/text rendered after the stat label. */
   extra?: JSX.Element;
 }) {
   const p = props.profile;

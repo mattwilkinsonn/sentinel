@@ -19,15 +19,17 @@ use sui_rpc::subscription_service_client::SubscriptionServiceClient;
 /// Connect to Sui fullnode and stream checkpoints forever (with reconnect).
 pub async fn stream_checkpoints(config: AppConfig, state: Arc<RwLock<AppState>>) {
     loop {
-        tracing::info!("Connecting to gRPC stream at {}", config.sui_grpc_url);
+        tracing::info!(url = %config.sui_grpc_url, "Connecting to gRPC stream at {}", config.sui_grpc_url);
         match run_stream(&config, &state).await {
             Ok(()) => tracing::warn!("gRPC stream ended cleanly, reconnecting..."),
-            Err(e) => tracing::error!("gRPC stream error: {e}, reconnecting in 2s..."),
+            Err(e) => tracing::error!(error = %e, "gRPC stream error: {e}, reconnecting in 2s..."),
         }
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
 }
 
+/// Open a single gRPC checkpoint subscription and process events until the stream ends.
+/// Returns `Ok(())` on clean stream end (caller reconnects), or `Err` on transport failure.
 async fn run_stream(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
@@ -42,9 +44,7 @@ async fn run_stream(
     // Request checkpoint stream with events included
     let request = SubscribeCheckpointsRequest {
         read_mask: Some(prost_types::FieldMask {
-            paths: vec![
-                "checkpoint.transactions".into(),
-            ],
+            paths: vec!["checkpoint.transactions".into()],
         }),
     };
 
@@ -52,6 +52,9 @@ async fn run_stream(
 
     tracing::info!("gRPC checkpoint stream connected");
     tracing::info!(
+        world_pkg = %config.world_package_id,
+        bounty_pkg = %config.bounty_board_package_id,
+        sentinel_pkg = %config.sentinel_package_id,
         "Filtering for packages: world={}, bounty={}, sentinel={}",
         config.world_package_id,
         config.bounty_board_package_id,
@@ -67,12 +70,18 @@ async fn run_stream(
             process_checkpoint(config, state, &checkpoint, cursor).await;
         }
 
-        // Update cursor
-        state.write().await.last_checkpoint = Some(cursor);
+        // Update cursor and heartbeat timestamp
+        {
+            let mut s = state.write().await;
+            s.last_checkpoint = Some(cursor);
+            s.last_checkpoint_at = Some(std::time::Instant::now());
+        }
 
         // Heartbeat every 100 checkpoints
         if checkpoint_count % 100 == 0 {
-            tracing::info!(
+            tracing::debug!(
+                checkpoint_count,
+                cursor,
                 "gRPC stream alive — processed {checkpoint_count} checkpoints, cursor={cursor}"
             );
         }
@@ -81,6 +90,9 @@ async fn run_stream(
     Ok(())
 }
 
+/// Process all events in a single live checkpoint.
+/// Gate names are pre-resolved via gRPC before acquiring the write lock, to keep lock
+/// hold time short. The first 20 events are sampled to debug package ID filtering.
 async fn process_checkpoint(
     config: &AppConfig,
     state: &Arc<RwLock<AppState>>,
@@ -109,7 +121,7 @@ async fn process_checkpoint(
                     &mut s.live.gate_name_cache,
                 )
                 .await;
-                tracing::debug!("Resolved gate {gate_id} → {name}");
+                tracing::debug!(gate_id, gate_name = %name, "Resolved gate {gate_id} → {name}");
             }
         }
     }
@@ -129,7 +141,12 @@ async fn process_checkpoint(
             let sample = SAMPLE_COUNT.load(Ordering::Relaxed);
             if sample < 20 {
                 SAMPLE_COUNT.fetch_add(1, Ordering::Relaxed);
-                tracing::info!("Event sample #{sample}: type={event_type} pkg={package_id}");
+                tracing::info!(
+                    sample,
+                    event_type,
+                    package_id,
+                    "Event sample #{sample}: type={event_type} pkg={package_id}"
+                );
             }
 
             // Filter for events from world or bounty_board packages
@@ -139,6 +156,9 @@ async fn process_checkpoint(
             {
                 if event_type.contains("Kill") || event_type.contains("kill") {
                     tracing::info!(
+                        event_type,
+                        package_id,
+                        want = %config.world_package_id,
                         "Skipped kill-like event: type={event_type} pkg={package_id} (want={})",
                         config.world_package_id
                     );
@@ -161,18 +181,47 @@ async fn process_checkpoint(
             if event_type.contains("KillMailCreatedEvent")
                 || event_type.contains("KillmailCreatedEvent")
             {
-                handle_killmail(store, &sse_tx, &json_value, timestamp_ms);
+                handle_killmail(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyPostedEvent") {
-                handle_bounty_posted(store, &sse_tx, &json_value, timestamp_ms);
+                handle_bounty_posted(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyCancelledEvent")
                 || event_type.contains("ContributionWithdrawnEvent")
             {
-                handle_bounty_removed(store, &sse_tx, &json_value, timestamp_ms);
+                handle_bounty_removed(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("JumpEvent") {
-                handle_jump(store, &sse_tx, &json_value, timestamp_ms);
+                handle_jump(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             }
 
-            tracing::info!("checkpoint={cursor} event={event_type} pkg={package_id}");
+            tracing::info!(
+                cursor,
+                event_type,
+                package_id,
+                "checkpoint={cursor} event={event_type} pkg={package_id}"
+            );
         }
     }
 }
@@ -255,6 +304,13 @@ pub fn process_checkpoint_events(
                 continue;
             }
 
+            tracing::debug!(
+                event_type,
+                package_id,
+                timestamp_ms,
+                "event dispatched: {event_type} from {package_id}"
+            );
+
             let json_value = event
                 .json
                 .as_ref()
@@ -264,27 +320,61 @@ pub fn process_checkpoint_events(
             if event_type.contains("KillMailCreatedEvent")
                 || event_type.contains("KillmailCreatedEvent")
             {
-                handle_killmail(store, sse_tx, &json_value, timestamp_ms);
+                handle_killmail(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyPostedEvent") {
-                handle_bounty_posted(store, sse_tx, &json_value, timestamp_ms);
+                handle_bounty_posted(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyCancelledEvent")
                 || event_type.contains("ContributionWithdrawnEvent")
             {
-                handle_bounty_removed(store, sse_tx, &json_value, timestamp_ms);
+                handle_bounty_removed(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("JumpEvent") {
-                handle_jump(store, sse_tx, &json_value, timestamp_ms);
+                handle_jump(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("CharacterCreatedEvent") {
-                handle_character_created(store, sse_tx, &json_value, timestamp_ms);
+                handle_character_created(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             }
         }
     }
 }
 
+/// Handle a KillMailCreatedEvent: credit the killer, record the victim's death, push a kill event.
+/// Structure kills (item_id >= STRUCTURE_ITEM_ID_MIN) are credited to the structure owner
+/// (reported_by_character_id) rather than the structure itself.
 fn handle_killmail(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     // Extract killer and victim character IDs (nested: {"item_id": "123", "tenant": "..."})
     let killer_id = json_item_id(json, "killer_id")
@@ -293,7 +383,8 @@ fn handle_killmail(
     let victim_id = json_item_id(json, "victim_id")
         .or_else(|| json_item_id(json, "victim_character_id"))
         .or_else(|| json_u64(json, "victimId"));
-    let is_structure_kill = json["loss_type"]["@variant"]
+    let reported_by_id = json_item_id(json, "reported_by_character_id");
+    let loss_is_structure = json["loss_type"]["@variant"]
         .as_str()
         .map(|v| v == "STRUCTURE")
         .unwrap_or(false);
@@ -302,7 +393,22 @@ fn handle_killmail(
         .unwrap_or_default();
     let system_name = resolve_system_name(state, &system);
 
-    if let Some(killer) = killer_id {
+    // A structure killed the player when the killer item_id is in the structure
+    // range (>= 1T). Credit the structure owner (reported_by_character_id) instead.
+    let killed_by_structure = !loss_is_structure
+        && killer_id
+            .map(|k| k >= crate::historical::STRUCTURE_ITEM_ID_MIN)
+            .unwrap_or(false);
+
+    let (credited_killer, structure_name) = if killed_by_structure {
+        let structure_item_id = killer_id.unwrap();
+        let name = state.resolve_structure_name(structure_item_id);
+        (reported_by_id.or(killer_id), Some(name))
+    } else {
+        (killer_id, None)
+    };
+
+    if let Some(killer) = credited_killer {
         let name = resolve_name(state, killer);
         let profile = state
             .profiles
@@ -322,7 +428,7 @@ fn handle_killmail(
     }
 
     if let Some(victim) = victim_id {
-        if !is_structure_kill {
+        if !loss_is_structure {
             let name = resolve_name(state, victim);
             let profile = state
                 .profiles
@@ -340,31 +446,40 @@ fn handle_killmail(
         }
     }
 
-    let event_type = if is_structure_kill {
-        "structure_kill"
+    let event_type = if loss_is_structure {
+        "structure_destroyed"
     } else {
         "kill"
     };
+
+    let mut data = serde_json::json!({
+        "killer_character_id": credited_killer,
+        "target_item_id": victim_id,
+        "solar_system_id": system,
+    });
+    if let Some(name) = structure_name {
+        data["killed_by_structure"] = serde_json::json!(true);
+        data["structure_name"] = serde_json::json!(name);
+    }
 
     state.push_event(
         RawEvent {
             event_type: event_type.into(),
             timestamp_ms,
-            data: serde_json::json!({
-                "killer_character_id": killer_id,
-                "target_item_id": victim_id,
-                "solar_system_id": system,
-            }),
+            data,
         },
         sse_tx,
+        cap,
     );
 }
 
+/// Handle a BountyPostedEvent: increment the target's bounty count and push the event.
 fn handle_bounty_posted(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let target_id = json_item_id(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
 
@@ -393,14 +508,18 @@ fn handle_bounty_posted(
             }),
         },
         sse_tx,
+        cap,
     );
 }
 
+/// Handle a BountyCancelledEvent or ContributionWithdrawnEvent: decrement the bounty count
+/// (saturating at 0). Only modifies profiles that already exist; unknown targets are ignored.
 fn handle_bounty_removed(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let target_id = json_item_id(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
 
@@ -421,14 +540,18 @@ fn handle_bounty_removed(
             }),
         },
         sse_tx,
+        cap,
     );
 }
 
+/// Handle a JumpEvent: update the character's last-seen system and increment systems_visited
+/// if this is a new system. Gate names are resolved from cache (pre-fetched before this call).
 fn handle_jump(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let character_id = json_item_id(json, "character_id")
         .or_else(|| json_item_id(json, "character_key"))
@@ -493,14 +616,18 @@ fn handle_jump(
             }),
         },
         sse_tx,
+        cap,
     );
 }
 
+/// Handle a CharacterCreatedEvent: insert a blank profile for the new character if one
+/// doesn't already exist, and push a `new_character` event.
 fn handle_character_created(
     state: &mut crate::types::DataStore,
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let char_id = json_item_id(json, "key")
         .or_else(|| json_item_id(json, "character_id"))
@@ -509,7 +636,7 @@ fn handle_character_created(
     if let Some(id) = char_id {
         state.profiles.entry(id).or_insert_with(|| ThreatProfile {
             character_item_id: id,
-            name: format!("Pilot #{id}"),
+            name: None,
             ..Default::default()
         });
 
@@ -520,17 +647,14 @@ fn handle_character_created(
                 data: serde_json::json!({ "character_id": id }),
             },
             sse_tx,
+            cap,
         );
     }
 }
 
-/// Look up a cached name, or return a fallback.
-fn resolve_name(state: &crate::types::DataStore, character_item_id: u64) -> String {
-    state
-        .name_cache
-        .get(&character_item_id)
-        .cloned()
-        .unwrap_or_else(|| format!("Pilot #{character_item_id}"))
+/// Look up a cached name, or return None if not yet resolved.
+fn resolve_name(state: &crate::types::DataStore, character_item_id: u64) -> Option<String> {
+    state.name_cache.get(&character_item_id).cloned()
 }
 
 /// Look up a cached system name from the inline DataStore cache.
@@ -544,6 +668,7 @@ fn resolve_system_name(state: &crate::types::DataStore, system_id: &str) -> Stri
 
 // === JSON helpers ===
 
+/// Extract a u64 from a JSON field, accepting both number and numeric-string values.
 fn json_u64(v: &serde_json::Value, key: &str) -> Option<u64> {
     v.get(key).and_then(|v| {
         v.as_u64()
@@ -578,6 +703,7 @@ fn json_item_id_str(v: &serde_json::Value, key: &str) -> Option<String> {
     })
 }
 
+/// Extract a string value from a JSON field.
 fn json_str(v: &serde_json::Value, key: &str) -> Option<String> {
     v.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
 }
@@ -628,7 +754,7 @@ mod tests {
             "solar_system_id": "J-1042"
         });
 
-        handle_killmail(&mut store, &no_sse(), &json, 1000);
+        handle_killmail(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.len(), 2);
 
@@ -665,7 +791,7 @@ mod tests {
             "victim_character_id": 200,
             "solar_system_id": "X-4419"
         });
-        handle_killmail(&mut store, &no_sse(), &json, 2000);
+        handle_killmail(&mut store, &no_sse(), &json, 2000, 1000);
 
         let killer = store.profiles.get(&100).unwrap();
         assert_eq!(killer.kill_count, 6);
@@ -679,7 +805,7 @@ mod tests {
             "killer_character_id": 100,
             "victim_character_id": 200,
         });
-        handle_killmail(&mut store, &no_sse(), &json, 1000);
+        handle_killmail(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.recent_events.len(), 1);
         assert_eq!(store.recent_events[0].event_type, "kill");
@@ -693,7 +819,7 @@ mod tests {
             "victimId": 400,
             "solarSystemId": "Z-0091"
         });
-        handle_killmail(&mut store, &no_sse(), &json, 1000);
+        handle_killmail(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert!(store.profiles.contains_key(&300));
         assert!(store.profiles.contains_key(&400));
@@ -707,7 +833,7 @@ mod tests {
         let mut store = empty_store();
         let json = serde_json::json!({ "target_item_id": 100 });
 
-        handle_bounty_posted(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_posted(&mut store, &no_sse(), &json, 1000, 1000);
 
         let profile = store.profiles.get(&100).unwrap();
         assert_eq!(profile.bounty_count, 1);
@@ -720,8 +846,8 @@ mod tests {
         let mut store = empty_store();
         let json = serde_json::json!({ "target_item_id": 100 });
 
-        handle_bounty_posted(&mut store, &no_sse(), &json, 1000);
-        handle_bounty_posted(&mut store, &no_sse(), &json, 2000);
+        handle_bounty_posted(&mut store, &no_sse(), &json, 1000, 1000);
+        handle_bounty_posted(&mut store, &no_sse(), &json, 2000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().bounty_count, 2);
     }
@@ -741,7 +867,7 @@ mod tests {
         );
 
         let json = serde_json::json!({ "target_item_id": 100 });
-        handle_bounty_removed(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_removed(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().bounty_count, 2);
         assert_eq!(store.recent_events[0].event_type, "bounty_removed");
@@ -760,7 +886,7 @@ mod tests {
         );
 
         let json = serde_json::json!({ "target_item_id": 100 });
-        handle_bounty_removed(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_removed(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().bounty_count, 0);
     }
@@ -769,7 +895,7 @@ mod tests {
     fn bounty_removed_ignores_unknown_character() {
         let mut store = empty_store();
         let json = serde_json::json!({ "target_item_id": 999 });
-        handle_bounty_removed(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_removed(&mut store, &no_sse(), &json, 1000, 1000);
 
         // No profile created — only existing profiles are modified
         assert!(!store.profiles.contains_key(&999));
@@ -787,7 +913,7 @@ mod tests {
             "solar_system_id": "K-9731"
         });
 
-        handle_jump(&mut store, &no_sse(), &json, 1000);
+        handle_jump(&mut store, &no_sse(), &json, 1000, 1000);
 
         let profile = store.profiles.get(&100).unwrap();
         assert_eq!(profile.last_seen_system, "K-9731");
@@ -813,7 +939,7 @@ mod tests {
             "character_id": 100,
             "solar_system_id": "K-9731"
         });
-        handle_jump(&mut store, &no_sse(), &json, 1000);
+        handle_jump(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().systems_visited, 3);
     }
@@ -835,7 +961,7 @@ mod tests {
             "character_id": 100,
             "solar_system_id": "X-4419"
         });
-        handle_jump(&mut store, &no_sse(), &json, 1000);
+        handle_jump(&mut store, &no_sse(), &json, 1000, 1000);
 
         let profile = store.profiles.get(&100).unwrap();
         assert_eq!(profile.systems_visited, 4);
@@ -868,12 +994,12 @@ mod tests {
     fn resolve_name_uses_cache() {
         let mut store = empty_store();
         store.name_cache.insert(42, "Vex Nightburn".into());
-        assert_eq!(resolve_name(&store, 42), "Vex Nightburn");
+        assert_eq!(resolve_name(&store, 42), Some("Vex Nightburn".to_string()));
     }
 
     #[test]
     fn resolve_name_falls_back() {
         let store = empty_store();
-        assert_eq!(resolve_name(&store, 42), "Pilot #42");
+        assert_eq!(resolve_name(&store, 42), None);
     }
 }

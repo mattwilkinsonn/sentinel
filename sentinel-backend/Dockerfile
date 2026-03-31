@@ -22,6 +22,9 @@ RUN rm -rf src migrations
 COPY src ./src
 COPY migrations ./migrations
 
+# Touch source files so cargo's fingerprint detects the change from the dummy build
+RUN find src -name "*.rs" | xargs touch
+
 # Build for real
 RUN cargo build --release
 

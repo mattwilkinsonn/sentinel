@@ -4,37 +4,59 @@ import { Dynamic } from "solid-js/web";
 import type { RawEvent, ThreatProfile } from "./types";
 
 type SentinelFeedProps = {
+  /** Pre-filtered events to display (caller handles the name-resolution filter). */
   events: RawEvent[];
   profiles: ThreatProfile[];
+  /** character_item_id → name; used for ID→name resolution before falling back to profiles. */
   names?: Record<string, string>;
+  /** system_id → display name */
   systems?: Record<string, string>;
 };
 
+/**
+ * Convenience closures passed into each `EventDisplay.format` function so they
+ * can resolve raw IDs to display names without closing over the full props object.
+ */
 type Lookups = {
+  /** Resolves a character ID (number or string) to a display name. Returns `"?"` for nullish input. */
   n: (id: unknown) => string;
+  /** Resolves a system ID to a display name. Falls back to the raw ID string. */
   sys: (id: unknown) => string;
 };
 
+/** Rendering configuration for a single event type in the live feed. */
 type EventDisplay = {
   icon: Component<{ size?: number; class?: string }>;
+  /** Tailwind text-colour class applied to the message and icon. */
   color: string;
+  /** CSS colour value used for the left accent border of each feed entry. */
   borderColor: string;
+  /** Produces the human-readable summary line for one event payload. */
   format: (data: Record<string, unknown>, l: Lookups) => string;
 };
 
+/**
+ * Maps each known `event_type` string to its display configuration.
+ * Unknown event types fall back to the `kill` entry at render time.
+ */
 const eventConfig: Record<string, EventDisplay> = {
   kill: {
     icon: Skull,
     color: "text-accent-red",
     borderColor: "var(--color-accent-red)",
     format: (d, l) =>
-      `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
+      d.killed_by_structure
+        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} killed ${l.n(d.target_item_id)}`
+        : `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
   },
-  structure_kill: {
+  structure_destroyed: {
     icon: Zap,
     color: "text-accent-orange",
     borderColor: "var(--color-accent-orange)",
-    format: (d, l) => `${l.n(d.killer_character_id)} destroyed a structure`,
+    format: (d, l) =>
+      d.killed_by_structure
+        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} destroyed a structure`
+        : `${l.n(d.killer_character_id)} destroyed a structure`,
   },
   bounty_posted: {
     icon: Target,
@@ -93,6 +115,10 @@ const eventConfig: Record<string, EventDisplay> = {
   },
 };
 
+/**
+ * Converts a millisecond timestamp to a short relative-time string ("just now",
+ * "5m ago", etc.). Returns an empty string for falsy input (e.g. timestamp 0).
+ */
 function timeAgo(timestampMs: number): string {
   if (!timestampMs) return "";
   const diff = Date.now() - timestampMs;
@@ -103,6 +129,12 @@ function timeAgo(timestampMs: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+/**
+ * Compact sidebar feed showing up to 50 of the most recent intel events.
+ * Timestamps are refreshed every 5 seconds via an interval tick signal so
+ * relative ages stay current without re-fetching data.
+ * Events newer than 5 seconds receive the `event-new` highlight class.
+ */
 export function SentinelFeed(props: SentinelFeedProps) {
   // Tick every 5s to keep relative timestamps fresh
   const [tick, setTick] = createSignal(0);

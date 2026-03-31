@@ -5,8 +5,8 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use axum::{extract::State as AxumState, routing::post, Json, Router};
-use sentinel_backend::config::AppConfig;
+use axum::{Json, Router, extract::State as AxumState, routing::post};
+use sentinel_backend::config::{AppConfig, LogFormat};
 use sentinel_backend::types::AppState;
 
 // === Mock GraphQL Server ===
@@ -57,13 +57,19 @@ fn test_config(graphql_url: &str) -> AppConfig {
         sui_graphql_url: graphql_url.into(),
         sentinel_package_id: "0xsentinel".into(),
         threat_registry_id: String::new(),
-        admin_private_key: String::new(),
+        publisher_private_key: String::new(),
         world_package_id: "0xworld".into(),
         bounty_board_package_id: "0xbounty".into(),
         publish_interval_ms: 30_000,
+        publish_score_threshold_bp: 100,
         api_port: 3001,
         database_url: "unused".into(),
         world_api_url: "unused".into(),
+        sentinel_log_level: tracing::Level::INFO,
+        crates_log_level: tracing::Level::WARN,
+        log_format: LogFormat::Pretty,
+        discord_token: "unused".into(),
+        max_recent_events: 1000,
     }
 }
 
@@ -322,7 +328,7 @@ async fn load_character_events_creates_profiles() {
     let s = state.read().await;
     assert!(s.live.profiles.contains_key(&42));
     assert!(s.live.profiles.contains_key(&99));
-    assert_eq!(s.live.profiles[&42].name, "Pilot #42");
+    assert!(s.live.profiles[&42].name.is_none());
     // Should have new_character events
     assert_eq!(s.live.new_pilot_events.len(), 2);
     assert_eq!(s.live.new_pilot_events[0].event_type, "new_character");
@@ -344,6 +350,7 @@ async fn load_character_events_skips_when_existing() {
                 data: serde_json::json!({}),
             },
             &None,
+            1000,
         );
     }
 
@@ -425,7 +432,10 @@ async fn load_jump_events_creates_profiles_and_events() {
     // Should have a jump event
     assert_eq!(s.live.recent_events.len(), 1);
     assert_eq!(s.live.recent_events[0].event_type, "jump");
-    assert_eq!(s.live.recent_events[0].data["source_gate"], "Stargate Alpha");
+    assert_eq!(
+        s.live.recent_events[0].data["source_gate"],
+        "Stargate Alpha"
+    );
     assert_eq!(s.live.recent_events[0].data["dest_gate"], "Stargate Beta");
 }
 
@@ -444,6 +454,7 @@ async fn load_jump_events_skips_when_existing() {
                 data: serde_json::json!({}),
             },
             &None,
+            1000,
         );
     }
 
@@ -500,7 +511,7 @@ async fn load_character_names_resolves_names() {
             42,
             sentinel_backend::types::ThreatProfile {
                 character_item_id: 42,
-                name: "Pilot #42".into(),
+                name: None,
                 ..Default::default()
             },
         );
@@ -508,7 +519,7 @@ async fn load_character_names_resolves_names() {
             99,
             sentinel_backend::types::ThreatProfile {
                 character_item_id: 99,
-                name: "Pilot #99".into(),
+                name: None,
                 ..Default::default()
             },
         );
@@ -518,8 +529,8 @@ async fn load_character_names_resolves_names() {
     // The DB upsert calls will fail silently (fire-and-forget in the code).
     // We test the in-memory name resolution, not DB persistence.
     // Use a dummy pool that will fail on connect.
-    let pool = sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid")
-        .unwrap();
+    let pool =
+        sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid").unwrap();
 
     let count = sentinel_backend::historical::load_character_names_graphql(&config, &state, &pool)
         .await
@@ -527,8 +538,8 @@ async fn load_character_names_resolves_names() {
 
     assert_eq!(count, 2);
     let s = state.read().await;
-    assert_eq!(s.live.profiles[&42].name, "Captain Kirk");
-    assert_eq!(s.live.profiles[&99].name, "Spock");
+    assert_eq!(s.live.profiles[&42].name, Some("Captain Kirk".to_string()));
+    assert_eq!(s.live.profiles[&99].name, Some("Spock".to_string()));
     assert_eq!(s.live.profiles[&42].tribe_id, "7");
     assert_eq!(s.live.profiles[&99].tribe_id, "3");
     // Name cache should be populated
@@ -549,14 +560,14 @@ async fn load_character_names_skips_when_all_resolved() {
             42,
             sentinel_backend::types::ThreatProfile {
                 character_item_id: 42,
-                name: "Already Resolved".into(),
+                name: Some("Already Resolved".to_string()),
                 ..Default::default()
             },
         );
     }
 
-    let pool = sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid")
-        .unwrap();
+    let pool =
+        sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid").unwrap();
 
     let count = sentinel_backend::historical::load_character_names_graphql(&config, &state, &pool)
         .await

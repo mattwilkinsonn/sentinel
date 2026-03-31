@@ -1,5 +1,19 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+// Backend runtime config — non-secret, non-chain values
+const BACKEND_CONFIG = {
+  apiPort: "3001",
+  publishIntervalMs: "30000",
+  publishThresholdBp: "100",
+  maxRecentEvents: "5000",
+  sentinelLogLevel: "info",
+  cratesLogLevel: "warn",
+  logFormat: "json",
+  suiGrpcUrl: "https://fullnode.testnet.sui.io:443",
+  suiGraphqlUrl: "https://graphql.testnet.sui.io/graphql",
+  worldApiUrl: "https://world-api-stillness.live.tech.evefrontier.com",
+};
+
 // Public on-chain addresses (not secrets, change when contracts are redeployed)
 const CHAIN_IDS = {
   worldPackageId:
@@ -18,7 +32,6 @@ const CHAIN_IDS = {
 interface EnvConfig {
   imageTag: string;
   neonOrgId: string;
-  adminPrivateKey: string;
 }
 
 function loadEnv(): EnvConfig {
@@ -31,8 +44,15 @@ function loadEnv(): EnvConfig {
   return {
     imageTag: require("IMAGE_TAG"),
     neonOrgId: require("NEON_ORG_ID"),
-    adminPrivateKey: require("ADMIN_PRIVATE_KEY"),
   };
+}
+
+// SSM Parameter Store ARNs for secrets — stored manually, never in code or CI.
+// One-time setup:
+//   aws ssm put-parameter --name /sentinel/<stage>/sui-publisher-key --type SecureString --value <key>
+//   aws ssm put-parameter --name /sentinel/<stage>/discord-token --type SecureString --value <token>
+function ssmArn(stage: string, name: string) {
+  return $interpolate`arn:aws:ssm:us-east-1:${aws.getCallerIdentityOutput().accountId}:parameter/sentinel/${stage}/${name}`;
 }
 
 function domainForStage(stage: string): string {
@@ -90,6 +110,10 @@ export default $config({
       cluster,
       architecture: "arm64",
       image: `ghcr.io/mattwilkinsonn/sentinel/backend:${env.imageTag}`,
+      logging: {
+        // Pin the log group name so we can reference it in metric filters and alarms.
+        name: `/sst/sentinel/${$app.stage}/backend`,
+      },
       health: {
         command: [
           "CMD-SHELL",
@@ -115,22 +139,32 @@ export default $config({
         ],
       },
       environment: {
-        SENTINEL_API_PORT: "3001",
+        SENTINEL_API_PORT: BACKEND_CONFIG.apiPort,
+        SENTINEL_PUBLISH_INTERVAL_MS: BACKEND_CONFIG.publishIntervalMs,
+        SENTINEL_PUBLISH_THRESHOLD_BP: BACKEND_CONFIG.publishThresholdBp,
+        MAX_RECENT_EVENTS: BACKEND_CONFIG.maxRecentEvents,
+        SENTINEL_LOG_LEVEL: BACKEND_CONFIG.sentinelLogLevel,
+        CRATES_LOG_LEVEL: BACKEND_CONFIG.cratesLogLevel,
+        LOG_FORMAT: BACKEND_CONFIG.logFormat,
+        SUI_GRPC_URL: BACKEND_CONFIG.suiGrpcUrl,
+        SUI_GRAPHQL_URL: BACKEND_CONFIG.suiGraphqlUrl,
+        WORLD_API_URL: BACKEND_CONFIG.worldApiUrl,
         SENTINEL_PACKAGE_ID: CHAIN_IDS.sentinelPackageId,
         THREAT_REGISTRY_ID: CHAIN_IDS.threatRegistryId,
         SENTINEL_ADMIN_CAP_ID: CHAIN_IDS.sentinelAdminCapId,
-        ADMIN_PRIVATE_KEY: env.adminPrivateKey,
         WORLD_PACKAGE_ID: CHAIN_IDS.worldPackageId,
         BUILDER_PACKAGE_ID: CHAIN_IDS.builderPackageId,
-        SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443",
-        SUI_GRAPHQL_URL: "https://sui-testnet.mystenlabs.com/graphql",
         DATABASE_URL: databaseUrl,
+      },
+      ssm: {
+        SUI_PUBLISHER_KEY: ssmArn($app.stage, "sui-publisher-key"),
+        DISCORD_TOKEN: ssmArn($app.stage, "discord-token"),
       },
     });
 
     // CloudWatch: operational alarms + dashboard
     // (The auto-scaling alarms are noise — these are the real ones.)
-    const region = aws.getRegionOutput().name;
+    const region = aws.getRegionOutput().region;
     const albArnSuffix = backend.nodes.loadBalancer.arnSuffix;
     const ecsClusterName = cluster.nodes.cluster.name;
     const ecsServiceName = backend.nodes.service.name;
@@ -138,6 +172,55 @@ export default $config({
     const snsAlarmTopic = new aws.sns.Topic("SentinelAlarmTopic", {
       name: `sentinel-${$app.stage}-alarms`,
     });
+
+    // Explicitly create the log group so it exists before the metric filter.
+    // ECS would create it lazily on first log write, but the metric filter needs
+    // it to exist at deploy time. The backend's logging.name pins it to this name.
+    const backendLogGroupName = `/sst/sentinel/${$app.stage}/backend`;
+    const backendLogGroup = new aws.cloudwatch.LogGroup(
+      "SentinelBackendLogGroup",
+      {
+        name: backendLogGroupName,
+        retentionInDays: 30,
+      },
+    );
+
+    // Application-level error alarm — watches for ERROR log lines in the backend log group.
+    const errNs = `Sentinel/${$app.stage}`;
+    const errorMetricFilter = new aws.cloudwatch.LogMetricFilter(
+      "AppErrorMetricFilter",
+      {
+        name: `sentinel-${$app.stage}-app-errors`,
+        logGroupName: backendLogGroupName,
+        pattern: '{ $.level = "ERROR" }',
+        metricTransformation: {
+          namespace: errNs,
+          name: "AppErrors",
+          value: "1",
+          defaultValue: "0",
+          unit: "Count",
+        },
+      },
+      { dependsOn: [backendLogGroup] },
+    );
+    new aws.cloudwatch.MetricAlarm(
+      "AppErrorAlarm",
+      {
+        name: `sentinel-${$app.stage}-app-errors`,
+        alarmDescription: "Backend logged an ERROR — check CloudWatch Logs",
+        namespace: errNs,
+        metricName: "AppErrors",
+        statistic: "Sum",
+        period: 60,
+        evaluationPeriods: 1,
+        threshold: 1,
+        comparisonOperator: "GreaterThanOrEqualToThreshold",
+        treatMissingData: "notBreaching",
+        alarmActions: [snsAlarmTopic.arn],
+        okActions: [snsAlarmTopic.arn],
+      },
+      { dependsOn: [errorMetricFilter] },
+    );
 
     // 5xx errors (server-side failures)
     new aws.cloudwatch.MetricAlarm("Backend5xxAlarm", {
@@ -196,8 +279,9 @@ export default $config({
       ecsClusterName,
       ecsServiceName,
       region,
-    ]).apply(([alb, ecsCluster, ecsSvc, reg]) =>
-      JSON.stringify({
+    ]).apply(([alb, ecsCluster, ecsSvc, reg]) => {
+      const errNs = `Sentinel/${$app.stage}`;
+      return JSON.stringify({
         widgets: [
           {
             type: "metric",
@@ -364,9 +448,29 @@ export default $config({
               view: "timeSeries",
             },
           },
+          {
+            type: "metric",
+            x: 0,
+            y: 18,
+            width: 24,
+            height: 6,
+            properties: {
+              title: "Application Errors (ERROR log level)",
+              region: reg,
+              metrics: [
+                [
+                  errNs,
+                  "AppErrors",
+                  { stat: "Sum", color: "#d62728", label: "Errors" },
+                ],
+              ],
+              period: 60,
+              view: "timeSeries",
+            },
+          },
         ],
-      }),
-    );
+      });
+    });
 
     new aws.cloudwatch.Dashboard("SentinelDashboard", {
       dashboardName: `sentinel-${$app.stage}`,

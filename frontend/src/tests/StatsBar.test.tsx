@@ -1,3 +1,4 @@
+// Tests for StatsBar: the clickable stat card row shown above the main content area
 import { render, screen } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { StatsBar } from "../StatsBar";
@@ -10,6 +11,7 @@ describe("StatsBar", () => {
     kills_24h: 18,
     top_system: "J-1042",
     total_events: 7,
+    events_at_cap: false,
   };
 
   const mockProfiles: ThreatProfile[] = [
@@ -44,7 +46,7 @@ describe("StatsBar", () => {
     ));
 
     expect(screen.getByText("EVENTS 24H")).toBeTruthy();
-    expect(screen.getByText("KILLS 24H")).toBeTruthy();
+    expect(screen.getByText("KILLS 7D")).toBeTruthy();
     expect(screen.getByText("ACTIVE THREATS")).toBeTruthy();
     expect(screen.getByText("TOP SYSTEM")).toBeTruthy();
     expect(screen.getByText("TRACKED")).toBeTruthy();
@@ -63,7 +65,7 @@ describe("StatsBar", () => {
     ));
 
     expect(screen.getByText("42")).toBeTruthy();
-    // 1 profile with score 8500 > 2500 threshold
+    // "1" is the ACTIVE THREATS count — profiles with score above the minimum threshold (score 8500 > 2500)
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("18")).toBeTruthy();
     expect(screen.getByText("J-1042")).toBeTruthy();
@@ -98,7 +100,7 @@ describe("StatsBar", () => {
     screen.getByText("TRACKED").closest("button")?.click();
     expect(onClick).toHaveBeenCalledWith("tracked");
 
-    screen.getByText("KILLS 24H").closest("button")?.click();
+    screen.getByText("KILLS 7D").closest("button")?.click();
     expect(onClick).toHaveBeenCalledWith("kills");
 
     screen.getByText("TOP SYSTEM").closest("button")?.click();

@@ -50,6 +50,21 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://sentinel:sentinel@localhost/sentinel
+      SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443"
+      SUI_GRAPHQL_URL: "https://graphql.testnet.sui.io/graphql"
+      SENTINEL_PACKAGE_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+      THREAT_REGISTRY_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+      SUI_PUBLISHER_KEY: "suiprivkey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpfkl3tt"
+      WORLD_PACKAGE_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+      BUILDER_PACKAGE_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
+      SENTINEL_PUBLISH_INTERVAL_MS: "60000"
+      SENTINEL_PUBLISH_THRESHOLD_BP: "500"
+      MAX_RECENT_EVENTS: "5000"
+      SENTINEL_API_PORT: "3001"
+      WORLD_API_URL: "https://stillness-world-api.live.tech.evefrontier.com"
+      SENTINEL_LOG_LEVEL: "info"
+      CRATES_LOG_LEVEL: "warn"
+      DISCORD_TOKEN: "unused"
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -83,6 +98,24 @@ jobs:
       - name: Build release
         run: cd sentinel-backend && cargo build --release
 
+      - name: Smoke test (backend starts and serves health check)
+        env:
+          LOG_FORMAT: "pretty"
+        run: |
+          cd sentinel-backend && ./target/release/sentinel-backend &
+          PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "Health check passed"
+              kill $PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend failed to start within 30s"
+          kill $PID 2>/dev/null
+          exit 1
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -112,6 +145,45 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Pull Docker image for smoke test
+        run: docker pull ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+
+      - name: Smoke test (Docker image starts and serves health check)
+        env:
+          LOG_FORMAT: "json"
+        run: |
+          docker run -d --name sentinel-smoke \
+            -e SUI_GRPC_URL \
+            -e SUI_GRAPHQL_URL \
+            -e SENTINEL_PACKAGE_ID \
+            -e THREAT_REGISTRY_ID \
+            -e SUI_PUBLISHER_KEY \
+            -e WORLD_PACKAGE_ID \
+            -e BUILDER_PACKAGE_ID \
+            -e SENTINEL_PUBLISH_INTERVAL_MS \
+            -e SENTINEL_PUBLISH_THRESHOLD_BP \
+            -e GRAPHQL_NAME_SCAN_THRESHOLD \
+            -e SENTINEL_API_PORT \
+            -e WORLD_API_URL \
+            -e SENTINEL_LOG_LEVEL \
+            -e CRATES_LOG_LEVEL \
+            -e LOG_FORMAT \
+            -e DATABASE_URL \
+            --network host \
+            ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "Health check passed"
+              docker rm -f sentinel-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Docker container failed to start within 30s"
+          docker logs sentinel-smoke
+          docker rm -f sentinel-smoke 2>/dev/null
+          exit 1
 
   frontend:
     name: Solid.js Frontend

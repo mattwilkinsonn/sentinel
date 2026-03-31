@@ -15,37 +15,67 @@ const BUILDER_PACKAGE_ID = import.meta.env.VITE_BUILDER_PACKAGE_ID || "";
 const SUI_RPC_URL =
   import.meta.env.VITE_SUI_RPC_URL || "https://fullnode.testnet.sui.io:443";
 
+/** A single contributor who stacked additional reward onto a bounty. */
 type Contribution = {
+  /** Sui wallet address of the contributor. */
   contributor: string;
+  /** Number of reward tokens this contributor added. */
   amount: number;
 };
 
+/**
+ * A bounty record read from the on-chain `BountyBoard` Sui Move object.
+ * Fields are deserialized from dynamic-field Move structs, so all IDs arrive as
+ * strings even when they represent numeric values.
+ */
 type Bounty = {
+  /** Sequential on-chain bounty ID. */
   id: number;
+  /** In-game item ID of the target character, stored as a string. */
   target_item_id: string;
+  /** In-game tenant/faction of the target. */
   target_tenant: string;
+  /** Move type ID of the reward token. */
   reward_type_id: string;
+  /** Total reward quantity across all contributors. */
   reward_quantity: number;
+  /** Sui address of the original poster. */
   poster: string;
+  /**
+   * Expiry timestamp as a numeric string (milliseconds since epoch), or `"0"`
+   * for no expiry. Converted to a number at display time.
+   */
   expires_at: string;
   claimed: boolean;
+  /** Sui address of the hunter who claimed the bounty, or null if unclaimed. */
   claimed_by: string | null;
   contributors: Contribution[];
 };
 
+/** A normalised on-chain bounty lifecycle event shown in the activity sidebar. */
 type ActivityEvent = {
   type: "posted" | "claimed" | "cancelled" | "stacked";
+  /** Wall-clock time of the chain event in milliseconds since epoch. */
   timestamp: number;
   bountyId: number;
+  /** Sui address of the poster, hunter, or contributor depending on `type`. */
   actor: string;
+  /** Reward token quantity involved, if available from the event payload. */
   rewardQuantity?: number;
 };
 
+/** Shortens a Sui address to `0x1234...abcd` form for display. Strings ≤ 10 chars are returned as-is. */
 function abbreviate(addr: string): string {
   if (addr.length <= 10) return addr;
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
+/**
+ * Returns a reactive accessor that yields a human-readable countdown string
+ * ("2d 4h", "30m", "EXPIRED", or "N/A" for `"0"`).
+ * The interval only runs while the expiry is in the future, and is cleaned up
+ * automatically via `onCleanup`.
+ */
 function useCountdown(expiresAtMs: string) {
   const [now, setNow] = createSignal(Date.now());
   const expires = Number(expiresAtMs);
@@ -71,6 +101,10 @@ function useCountdown(expiresAtMs: string) {
   return display;
 }
 
+/**
+ * Classifies a reward quantity into a display tier.
+ * Thresholds: BRONZE < 10, SILVER ≥ 10, GOLD ≥ 50, DIAMOND ≥ 100.
+ */
 function getRewardTier(quantity: number) {
   if (quantity >= 100) return { label: "DIAMOND", class: "text-tier-diamond" };
   if (quantity >= 50) return { label: "GOLD", class: "text-tier-gold" };
@@ -78,6 +112,17 @@ function getRewardTier(quantity: number) {
   return { label: "BRONZE", class: "text-tier-bronze" };
 }
 
+/**
+ * Reads the live bounty state directly from the Sui blockchain via
+ * `SuiJsonRpcClient`. Bounties are loaded as dynamic fields on the
+ * `BOUNTY_BOARD_ID` object, so one RPC call is made per bounty entry.
+ *
+ * Activity events (posted / claimed / cancelled / stacked) are queried
+ * separately and refreshed every 30 seconds.
+ *
+ * If `VITE_BOUNTY_BOARD_ID` is not configured, an instructional placeholder is
+ * shown instead of making any RPC calls.
+ */
 export function BountyBoard() {
   const [bounties, setBounties] = createSignal<Bounty[]>([]);
   const [events, setEvents] = createSignal<ActivityEvent[]>([]);
@@ -86,6 +131,11 @@ export function BountyBoard() {
 
   const client = new SuiJsonRpcClient({ url: SUI_RPC_URL, network: "testnet" });
 
+  /**
+   * Fetches all bounty objects from the on-chain board. Each dynamic field
+   * requires its own `getDynamicFieldObject` call; malformed entries are
+   * silently skipped. Results are sorted: unclaimed first, then by descending ID.
+   */
   async function fetchBounties() {
     if (!BOUNTY_BOARD_ID) {
       setLoading(false);
@@ -151,6 +201,11 @@ export function BountyBoard() {
     }
   }
 
+  /**
+   * Queries the four bounty lifecycle Move event types and merges them into a
+   * single activity list, capped at 20 entries. Individual event types that
+   * haven't been emitted yet (no matching type on-chain) are silently ignored.
+   */
   async function fetchEvents() {
     if (!BUILDER_PACKAGE_ID) return;
 

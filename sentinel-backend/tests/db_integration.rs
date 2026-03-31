@@ -55,7 +55,7 @@ async fn upsert_and_load_profile() {
 
     let profile = sentinel_backend::types::ThreatProfile {
         character_item_id: 42,
-        name: "Test Pilot".into(),
+        name: Some("Test Pilot".to_string()),
         threat_score: 5000,
         kill_count: 10,
         death_count: 3,
@@ -78,7 +78,7 @@ async fn upsert_and_load_profile() {
 
     assert_eq!(store.profiles.len(), 1);
     let loaded = store.profiles.get(&42).unwrap();
-    assert_eq!(loaded.name, "Test Pilot");
+    assert_eq!(loaded.name, Some("Test Pilot".to_string()));
     assert_eq!(loaded.threat_score, 5000);
     assert_eq!(loaded.kill_count, 10);
     assert_eq!(loaded.death_count, 3);
@@ -96,7 +96,7 @@ async fn upsert_updates_existing_profile() {
 
     let mut profile = sentinel_backend::types::ThreatProfile {
         character_item_id: 99,
-        name: "Original".into(),
+        name: Some("Original".to_string()),
         kill_count: 1,
         ..Default::default()
     };
@@ -105,7 +105,7 @@ async fn upsert_updates_existing_profile() {
         .await
         .unwrap();
 
-    profile.name = "Updated".into();
+    profile.name = Some("Updated".to_string());
     profile.kill_count = 5;
     profile.threat_score = 3000;
 
@@ -120,7 +120,7 @@ async fn upsert_updates_existing_profile() {
 
     assert_eq!(store.profiles.len(), 1);
     let loaded = store.profiles.get(&99).unwrap();
-    assert_eq!(loaded.name, "Updated");
+    assert_eq!(loaded.name, Some("Updated".to_string()));
     assert_eq!(loaded.kill_count, 5);
     assert_eq!(loaded.threat_score, 3000);
 }
@@ -245,7 +245,7 @@ async fn load_multiple_profiles() {
             &pool,
             &sentinel_backend::types::ThreatProfile {
                 character_item_id: id,
-                name: format!("Pilot #{id}"),
+                name: None,
                 threat_score: id * 1000,
                 ..Default::default()
             },
@@ -261,5 +261,5 @@ async fn load_multiple_profiles() {
 
     assert_eq!(store.profiles.len(), 5);
     assert_eq!(store.profiles.get(&3).unwrap().threat_score, 3000);
-    assert_eq!(store.profiles.get(&5).unwrap().name, "Pilot #5");
+    assert!(store.profiles.get(&5).unwrap().name.is_none());
 }

@@ -6,6 +6,10 @@ use crate::types::{DataStore, RawEvent, ThreatProfile};
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/001_init.sql"),
     include_str!("../migrations/002_published_score.sql"),
+    include_str!("../migrations/003_drop_published_score.sql"),
+    include_str!("../migrations/004_discord_alert_channels.sql"),
+    include_str!("../migrations/005_structure_cache.sql"),
+    include_str!("../migrations/006_nullable_profile_name.sql"),
 ];
 
 /// Run all migrations on an existing pool.
@@ -35,7 +39,7 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
     let rows = sqlx::query_as::<_, ProfileRow>(
         "SELECT character_item_id, name, threat_score, kill_count, death_count, \
          bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-         systems_visited, tribe_id, tribe_name, last_seen_system_name, published_score \
+         systems_visited, tribe_id, tribe_name, last_seen_system_name \
          FROM threat_profiles",
     )
     .fetch_all(pool)
@@ -58,7 +62,6 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
                 tribe_name: r.tribe_name,
                 recent_kills_24h: r.recent_kills_24h as u64,
                 systems_visited: r.systems_visited as u64,
-                published_score: r.published_score as u64,
                 ..Default::default()
             },
         );
@@ -81,6 +84,8 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
     }
 
     tracing::info!(
+        profiles = store.profiles.len(),
+        events = store.recent_events.len(),
         "Loaded {} profiles and {} events from database",
         store.profiles.len(),
         store.recent_events.len()
@@ -103,8 +108,8 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
         "INSERT INTO threat_profiles \
          (character_item_id, name, threat_score, kill_count, death_count, \
           bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-          systems_visited, tribe_id, tribe_name, last_seen_system_name, published_score, updated_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, NOW()) \
+          systems_visited, tribe_id, tribe_name, last_seen_system_name, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW()) \
          ON CONFLICT (character_item_id) DO UPDATE SET \
           name = EXCLUDED.name, \
           threat_score = EXCLUDED.threat_score, \
@@ -118,7 +123,6 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
           tribe_id = EXCLUDED.tribe_id, \
           tribe_name = EXCLUDED.tribe_name, \
           last_seen_system_name = EXCLUDED.last_seen_system_name, \
-          published_score = EXCLUDED.published_score, \
           updated_at = NOW()",
     )
     .bind(p.character_item_id as i64)
@@ -134,10 +138,29 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
     .bind(&p.tribe_id)
     .bind(&p.tribe_name)
     .bind(&p.last_seen_system_name)
-    .bind(p.published_score as i64)
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Fetch the most recent kill/structure_destroyed events from DB.
+pub async fn recent_kills(pool: &PgPool, limit: i64) -> Result<Vec<RawEvent>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, EventRow>(
+        "SELECT event_type, timestamp_ms, data FROM raw_events \
+         WHERE event_type IN ('kill', 'structure_destroyed') \
+         ORDER BY timestamp_ms DESC LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| RawEvent {
+            event_type: r.event_type,
+            timestamp_ms: r.timestamp_ms as u64,
+            data: r.data,
+        })
+        .collect())
 }
 
 /// Insert a raw event.
@@ -178,7 +201,7 @@ pub async fn prune_events(pool: &PgPool, keep: i64) -> Result<u64, sqlx::Error> 
 #[derive(sqlx::FromRow)]
 struct ProfileRow {
     character_item_id: i64,
-    name: String,
+    name: Option<String>,
     threat_score: i64,
     kill_count: i64,
     death_count: i64,
@@ -190,7 +213,6 @@ struct ProfileRow {
     tribe_name: String,
     recent_kills_24h: i64,
     systems_visited: i64,
-    published_score: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -218,15 +240,10 @@ pub async fn load_character_names(
 }
 
 /// Load gate names from DB cache into the DataStore.
-pub async fn load_gate_names(
-    pool: &PgPool,
-    store: &mut DataStore,
-) -> Result<usize, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (String, String)>(
-        "SELECT gate_id, name FROM gate_name_cache",
-    )
-    .fetch_all(pool)
-    .await?;
+pub async fn load_gate_names(pool: &PgPool, store: &mut DataStore) -> Result<usize, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, String)>("SELECT gate_id, name FROM gate_name_cache")
+        .fetch_all(pool)
+        .await?;
     let count = rows.len();
     for (gate_id, name) in rows {
         store.gate_name_cache.insert(gate_id, name);
@@ -235,17 +252,87 @@ pub async fn load_gate_names(
 }
 
 /// Save a gate name to the DB cache.
-pub async fn upsert_gate_name(
-    pool: &PgPool,
-    gate_id: &str,
-    name: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn upsert_gate_name(pool: &PgPool, gate_id: &str, name: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO gate_name_cache (gate_id, name) VALUES ($1, $2) \
          ON CONFLICT (gate_id) DO UPDATE SET name = EXCLUDED.name, fetched_at = NOW()",
     )
     .bind(gate_id)
     .bind(name)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Load all guild alert channel mappings from the database.
+pub async fn load_alert_channels(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<u64, u64>, sqlx::Error> {
+    let rows =
+        sqlx::query_as::<_, (i64, i64)>("SELECT guild_id, channel_id FROM discord_alert_channels")
+            .fetch_all(pool)
+            .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(g, c)| (g as u64, c as u64))
+        .collect())
+}
+
+/// Set the alert channel for a guild.
+pub async fn set_alert_channel(
+    pool: &PgPool,
+    guild_id: u64,
+    channel_id: u64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO discord_alert_channels (guild_id, channel_id) VALUES ($1, $2) \
+         ON CONFLICT (guild_id) DO UPDATE SET channel_id = EXCLUDED.channel_id, created_at = NOW()",
+    )
+    .bind(guild_id as i64)
+    .bind(channel_id as i64)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Remove the alert channel for a guild.
+pub async fn clear_alert_channel(pool: &PgPool, guild_id: u64) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM discord_alert_channels WHERE guild_id = $1")
+        .bind(guild_id as i64)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Load structure type cache from DB into the DataStore.
+pub async fn load_structure_types(
+    pool: &PgPool,
+    store: &mut DataStore,
+) -> Result<usize, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (i64, i64)>("SELECT item_id, type_id FROM structure_type_cache")
+        .fetch_all(pool)
+        .await?;
+    let count = rows.len();
+    for (item_id, type_id) in rows {
+        store
+            .structure_type_cache
+            .insert(item_id as u64, type_id as u64);
+    }
+    Ok(count)
+}
+
+/// Save a structure item_id → type_id mapping to the DB cache.
+pub async fn upsert_structure_type(
+    pool: &PgPool,
+    item_id: u64,
+    type_id: u64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO structure_type_cache (item_id, type_id) VALUES ($1, $2) \
+         ON CONFLICT (item_id) DO UPDATE SET type_id = EXCLUDED.type_id, fetched_at = NOW()",
+    )
+    .bind(item_id as i64)
+    .bind(type_id as i64)
     .execute(pool)
     .await?;
     Ok(())

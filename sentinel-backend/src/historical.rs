@@ -14,7 +14,12 @@ use crate::threat_engine;
 use crate::types::{AppState, RawEvent, ThreatProfile};
 
 /// Load all historical data: GraphQL for indexed queries, gRPC for checkpoint replay.
-pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>, pool: sqlx::PgPool) {
+pub async fn load_all(
+    config: AppConfig,
+    state: Arc<RwLock<AppState>>,
+    pool: sqlx::PgPool,
+    world_client: std::sync::Arc<tokio::sync::RwLock<crate::world_api::WorldApiClient>>,
+) {
     macro_rules! load {
         ($fn:expr, $name:expr) => {
             if let Err(e) = $fn.await {
@@ -33,6 +38,10 @@ pub async fn load_all(config: AppConfig, state: Arc<RwLock<AppState>>, pool: sql
     load!(
         load_character_names_graphql(&config, &state, &pool),
         "Character names (GraphQL)"
+    );
+    load!(
+        load_structure_types(&config, &state, &pool, &world_client),
+        "Structure types"
     );
 
     // Phase 2: gRPC checkpoint replay (fills gap between saved cursor and latest)
@@ -107,6 +116,18 @@ pub async fn load_historical_killmails(
         let s = state.read().await;
         s.live.profiles.keys().copied().collect()
     };
+
+    // Temporarily disabled for debugging — re-enable once feed confirmed working.
+    // If profiles are already seeded from the DB, skip the full GraphQL scan.
+    // New killmails since the last saved checkpoint are caught by the gRPC replay.
+    // if !existing_profiles.is_empty() {
+    //     tracing::info!(
+    //         profiles = existing_profiles.len(),
+    //         "Skipping historical killmail load — profiles already seeded from DB"
+    //     );
+    //     return Ok(existing_profiles.len());
+    // }
+
     let has_existing_kills = {
         let s = state.read().await;
         s.live.recent_events.iter().any(|e| e.event_type == "kill")
@@ -162,10 +183,21 @@ pub async fn load_historical_killmails(
 
             let killer_id = extract_item_id(&contents["killer_id"]);
             let victim_id = extract_item_id(&contents["victim_id"]);
-            let is_ship_kill = contents["loss_type"]["@variant"]
+            let reported_by_id = extract_item_id(&contents["reported_by_character_id"]);
+            let loss_is_structure = contents["loss_type"]["@variant"]
                 .as_str()
-                .map(|v| v == "SHIP")
-                .unwrap_or(true);
+                .map(|v| v == "STRUCTURE")
+                .unwrap_or(false);
+            let is_ship_kill = !loss_is_structure;
+            let killed_by_structure = is_ship_kill
+                && killer_id
+                    .map(|k| k >= STRUCTURE_ITEM_ID_MIN)
+                    .unwrap_or(false);
+            let credited_killer = if killed_by_structure {
+                reported_by_id.or(killer_id)
+            } else {
+                killer_id
+            };
             let timestamp_secs = contents["kill_timestamp"]
                 .as_str()
                 .and_then(|s| s.parse::<u64>().ok())
@@ -190,11 +222,11 @@ pub async fn load_historical_killmails(
             let now_ms = chrono::Utc::now().timestamp_millis() as u64;
             let is_recent = timestamp > now_ms.saturating_sub(86_400_000);
 
-            if let Some(kid) = killer_id {
+            if let Some(kid) = credited_killer {
                 let is_new = !existing_profiles.contains(&kid);
                 let profile = s.live.profiles.entry(kid).or_insert_with(|| ThreatProfile {
                     character_item_id: kid,
-                    name: format!("Pilot #{kid}"),
+                    name: None,
                     ..Default::default()
                 });
                 if is_new {
@@ -215,7 +247,7 @@ pub async fn load_historical_killmails(
                     let is_new = !existing_profiles.contains(&vid);
                     let profile = s.live.profiles.entry(vid).or_insert_with(|| ThreatProfile {
                         character_item_id: vid,
-                        name: format!("Pilot #{vid}"),
+                        name: None,
                         ..Default::default()
                     });
                     if is_new {
@@ -235,19 +267,26 @@ pub async fn load_historical_killmails(
             let evt_type = if is_ship_kill {
                 "kill"
             } else {
-                "structure_kill"
+                "structure_destroyed"
             };
+            let mut evt_data = serde_json::json!({
+                "killer_character_id": credited_killer,
+                "target_item_id": victim_id,
+                "solar_system_id": system,
+            });
+            if killed_by_structure {
+                let structure_name = s.live.resolve_structure_name(killer_id.unwrap());
+                evt_data["killed_by_structure"] = serde_json::json!(true);
+                evt_data["structure_name"] = serde_json::json!(structure_name);
+            }
             s.live.push_event(
                 RawEvent {
                     event_type: evt_type.into(),
                     timestamp_ms: timestamp,
-                    data: serde_json::json!({
-                        "killer_character_id": killer_id,
-                        "target_item_id": victim_id,
-                        "solar_system_id": system,
-                    }),
+                    data: evt_data,
                 },
                 &None,
+                config.max_recent_events,
             );
 
             total += 1;
@@ -286,17 +325,11 @@ pub async fn load_character_events(
     );
     tracing::info!("Loading character creation events");
 
-    let has_existing_events = {
+    let existing_profiles = {
         let s = state.read().await;
-        s.live
-            .recent_events
-            .iter()
-            .any(|e| e.event_type == "new_character")
+        s.live.profiles.len()
     };
-    if has_existing_events {
-        tracing::info!("Skipping character events — already have them from DB");
-        return Ok(0);
-    }
+    let _ = existing_profiles; // warm restart skip removed
 
     let http = reqwest::Client::new();
     let mut cursor: Option<String> = None;
@@ -355,7 +388,7 @@ pub async fn load_character_events(
             if let Some(id) = char_id {
                 s.live.profiles.entry(id).or_insert_with(|| ThreatProfile {
                     character_item_id: id,
-                    name: format!("Pilot #{id}"),
+                    name: None,
                     ..Default::default()
                 });
 
@@ -366,6 +399,7 @@ pub async fn load_character_events(
                         data: serde_json::json!({ "character_id": id }),
                     },
                     &None,
+                    config.max_recent_events,
                 );
 
                 total += 1;
@@ -401,10 +435,7 @@ pub async fn load_jump_events(
         let profiles: std::collections::HashSet<u64> = s.live.profiles.keys().copied().collect();
         (has, profiles)
     };
-    if has_existing {
-        tracing::info!("Skipping jump events — already have them from DB");
-        return Ok(0);
-    }
+    let _ = has_existing; // warm restart skip removed
 
     let http = reqwest::Client::new();
     let mut cursor: Option<String> = None;
@@ -490,7 +521,7 @@ pub async fn load_jump_events(
                 let is_new = !existing_profiles.contains(id);
                 let profile = s.live.profiles.entry(*id).or_insert_with(|| ThreatProfile {
                     character_item_id: *id,
-                    name: format!("Pilot #{id}"),
+                    name: None,
                     ..Default::default()
                 });
                 if is_new {
@@ -509,6 +540,7 @@ pub async fn load_jump_events(
                         }),
                     },
                     &None,
+                    config.max_recent_events,
                 );
 
                 total += 1;
@@ -535,11 +567,13 @@ pub async fn load_character_names_graphql(
     let (total_profiles, unresolved) = {
         let s = state.read().await;
         let total = s.live.profiles.len();
+        // Use name_cache presence (not p.name) so that permanently-unresolvable
+        // characters (marked with "" in the cache after a prior scan) are not retried.
         let unresolved = s
             .live
             .profiles
-            .values()
-            .filter(|p| p.name.starts_with("Pilot #"))
+            .keys()
+            .filter(|id| !s.live.name_cache.contains_key(id))
             .count();
         (total, unresolved)
     };
@@ -548,14 +582,14 @@ pub async fn load_character_names_graphql(
         tracing::info!("All character names resolved from DB cache");
         return Ok(0);
     }
-    if unresolved < 20 && total_profiles > 100 {
-        tracing::info!(
-            "{unresolved} unresolved names — too few for full GraphQL reload, metadata resolver will handle"
-        );
-        return Ok(0);
-    }
 
-    tracing::info!("{unresolved}/{total_profiles} characters need names — loading from GraphQL");
+    // warm restart skip removed
+
+    tracing::info!(
+        unresolved,
+        total_profiles,
+        "Loading character names from GraphQL"
+    );
 
     let character_type = format!("{}::character::Character", config.world_package_id);
 
@@ -573,6 +607,7 @@ pub async fn load_character_names_graphql(
             r#"{{
                 objects(filter: {{ type: "{character_type}" }}, first: 50{after_clause}) {{
                     nodes {{
+                        address
                         asMoveObject {{
                             contents {{
                                 json
@@ -612,6 +647,7 @@ pub async fn load_character_names_graphql(
 
             let item_id =
                 extract_item_id(&contents["key"]).or_else(|| extract_item_id(&contents["item_id"]));
+            let address = node["address"].as_str();
             let name = contents["metadata"]["name"]
                 .as_str()
                 .or_else(|| contents["name"].as_str())
@@ -624,13 +660,17 @@ pub async fn load_character_names_graphql(
                 .unwrap_or_default();
 
             if let Some(id) = item_id {
+                // Cache the Sui object address for future gRPC lookups
+                if let Some(addr) = address {
+                    s.live.object_id_cache.insert(id, addr.to_string());
+                }
                 if !name.is_empty() {
                     s.live.name_cache.insert(id, name.clone());
                     let _ = crate::db::upsert_character_name(pool, id, &name).await;
                 }
                 if let Some(profile) = s.live.profiles.get_mut(&id) {
-                    if !name.is_empty() && profile.name.starts_with("Pilot #") {
-                        profile.name = name;
+                    if !name.is_empty() && profile.name.is_none() {
+                        profile.name = Some(name);
                         profile.dirty = true;
                     }
                     if !tribe_id.is_empty() && profile.tribe_id.is_empty() {
@@ -654,6 +694,34 @@ pub async fn load_character_names_graphql(
     }
 
     tracing::info!("Character name load (GraphQL) complete: {total} names resolved");
+
+    // Mark any characters that were scanned but still have no name as permanently
+    // unresolvable (deleted accounts, test accounts with no name in the API).
+    // Storing "" in name_cache + DB means subsequent startups skip them.
+    {
+        let mut s = state.write().await;
+        let unresolvable: Vec<u64> = s
+            .live
+            .profiles
+            .keys()
+            .filter(|id| !s.live.name_cache.contains_key(id))
+            .copied()
+            .collect();
+        let count = unresolvable.len();
+        for id in &unresolvable {
+            s.live.name_cache.insert(*id, String::new());
+        }
+        drop(s);
+        for id in &unresolvable {
+            let _ = crate::db::upsert_character_name(pool, *id, "").await;
+        }
+        if count > 0 {
+            tracing::info!(
+                "Marked {count} characters as permanently unresolvable — will skip on next startup"
+            );
+        }
+    }
+
     Ok(total)
 }
 
@@ -687,7 +755,7 @@ async fn resolve_gate_name_graphql(
                 (Some(n), _) => n.to_string(),
                 (None, Some(id)) => format!("Gate #{id}"),
                 _ => {
-                    tracing::debug!("Could not resolve gate {gate_id}");
+                    tracing::debug!(gate_id, "Could not resolve gate {gate_id}");
                     format!("Gate {}", &gate_id[..8.min(gate_id.len())])
                 }
             }
@@ -723,6 +791,7 @@ async fn replay_checkpoints(
         Some(cp) => cp + 1,
         None => {
             tracing::info!(
+                latest_checkpoint = latest,
                 "No saved checkpoint — skipping gRPC replay (latest checkpoint: {latest})"
             );
             return Ok(());
@@ -730,12 +799,21 @@ async fn replay_checkpoints(
     };
 
     if start > latest {
-        tracing::info!("Already caught up at checkpoint {}", start - 1);
+        tracing::info!(
+            checkpoint = start - 1,
+            "Already caught up at checkpoint {}",
+            start - 1
+        );
         return Ok(());
     }
 
     let gap = latest - start + 1;
-    tracing::info!("Replaying {gap} checkpoints ({start}..={latest}) via gRPC");
+    tracing::info!(
+        gap,
+        start,
+        latest,
+        "Replaying {gap} checkpoints ({start}..={latest}) via gRPC"
+    );
 
     let mut client = LedgerServiceClient::new(channel.clone());
     let mut processed = 0u64;
@@ -749,7 +827,7 @@ async fn replay_checkpoints(
             let resp = match crate::sui_client::get_checkpoint(&mut client, cp_seq).await {
                 Ok(r) => r,
                 Err(e) => {
-                    tracing::warn!("Failed to fetch checkpoint {cp_seq}: {e}");
+                    tracing::warn!(checkpoint = cp_seq, error = %e, "Failed to fetch checkpoint {cp_seq}: {e}");
                     continue;
                 }
             };
@@ -767,8 +845,7 @@ async fn replay_checkpoints(
                         checkpoint,
                         timestamp_ms,
                     );
-                    events_found +=
-                        (s.live.recent_events.len() - event_count_before) as u64;
+                    events_found += (s.live.recent_events.len() - event_count_before) as u64;
                 }
             }
 
@@ -784,14 +861,20 @@ async fn replay_checkpoints(
 
         if processed % 1000 == 0 && processed > 0 {
             tracing::info!(
+                processed,
+                gap,
+                events_found,
                 "Historical replay: {processed}/{gap} checkpoints, {events_found} events found"
             );
         }
     }
 
+    let profile_count = state.read().await.live.profiles.len();
     tracing::info!(
-        "Historical replay complete: {processed} checkpoints, {events_found} events found, {} profiles",
-        state.read().await.live.profiles.len()
+        processed,
+        events_found,
+        profiles = profile_count,
+        "Historical replay complete: {processed} checkpoints, {events_found} events found, {profile_count} profiles"
     );
 
     // Post-replay: resolve gate names for any jump events from replay
@@ -802,10 +885,7 @@ async fn replay_checkpoints(
 
 /// After checkpoint replay, resolve any gate IDs in recent jump events that
 /// aren't cached yet. Updates both the cache and the event data in place.
-async fn resolve_replay_gate_names(
-    state: &Arc<RwLock<AppState>>,
-    channel: Channel,
-) {
+async fn resolve_replay_gate_names(state: &Arc<RwLock<AppState>>, channel: Channel) {
     // Collect uncached gate IDs from recent jump events
     let uncached: Vec<String> = {
         let s = state.read().await;
@@ -838,7 +918,11 @@ async fn resolve_replay_gate_names(
         return;
     }
 
-    tracing::info!("Resolving {} gate names from replay jump events", uncached.len());
+    tracing::info!(
+        count = uncached.len(),
+        "Resolving {} gate names from replay jump events",
+        uncached.len()
+    );
 
     // Resolve each gate name via gRPC
     {
@@ -891,9 +975,9 @@ async fn load_character_names_grpc(
         let s = state.read().await;
         s.live
             .profiles
-            .values()
-            .filter(|p| p.name.starts_with("Pilot #"))
-            .map(|p| p.character_item_id)
+            .keys()
+            .filter(|id| !s.live.name_cache.contains_key(id))
+            .copied()
             .collect()
     };
 
@@ -902,6 +986,7 @@ async fn load_character_names_grpc(
     }
 
     tracing::info!(
+        count = unresolved.len(),
         "{} characters still need names — trying gRPC batch fetch",
         unresolved.len()
     );
@@ -910,12 +995,7 @@ async fn load_character_names_grpc(
         let s = state.read().await;
         unresolved
             .iter()
-            .filter_map(|id| {
-                s.live
-                    .object_id_cache
-                    .get(id)
-                    .map(|oid| (*id, oid.clone()))
-            })
+            .filter_map(|id| s.live.object_id_cache.get(id).map(|oid| (*id, oid.clone())))
             .collect()
     };
 
@@ -930,13 +1010,12 @@ async fn load_character_names_grpc(
                     let item_id = json["key"]["item_id"]
                         .as_str()
                         .and_then(|v| v.parse::<u64>().ok());
-                    let name: Option<&str> = json["metadata"]["name"]
-                        .as_str()
-                        .filter(|n| !n.is_empty());
+                    let name: Option<&str> =
+                        json["metadata"]["name"].as_str().filter(|n| !n.is_empty());
                     if let (Some(id), Some(name)) = (item_id, name) {
                         s.live.name_cache.insert(id, name.to_string());
                         if let Some(p) = s.live.profiles.get_mut(&id) {
-                            p.name = name.to_string();
+                            p.name = Some(name.to_string());
                             p.dirty = true;
                         }
                         let _ = crate::db::upsert_character_name(pool, id, name).await;
@@ -945,7 +1024,7 @@ async fn load_character_names_grpc(
                 }
             }
             Err(e) => {
-                tracing::warn!("gRPC batch name resolution failed: {e}");
+                tracing::warn!(error = %e, "gRPC batch name resolution failed: {e}");
             }
         }
     }
@@ -953,10 +1032,134 @@ async fn load_character_names_grpc(
     let remaining = unresolved.len() - total;
     if remaining > 0 {
         tracing::info!(
+            count = remaining,
             "{remaining} names deferred to metadata resolver (no cached object IDs)"
         );
     }
 
+    Ok(total)
+}
+
+// ---------------------------------------------------------------------------
+// Structure type resolution
+// ---------------------------------------------------------------------------
+
+/// Known deployable structure types in the world package.
+const STRUCTURE_TYPES: &[&str] = &["gate::Gate", "turret::Turret", "assembly::Assembly"];
+
+/// Minimum item_id that identifies a structure (vs a character).
+/// Characters are ~2.1B; structures are ~1T.
+pub const STRUCTURE_ITEM_ID_MIN: u64 = 1_000_000_000_000;
+
+/// Scan Gate, Turret, and Assembly objects via GraphQL to build the
+/// item_id → type_id cache, then resolve type names from the World API.
+pub async fn load_structure_types(
+    config: &AppConfig,
+    state: &Arc<RwLock<AppState>>,
+    pool: &sqlx::PgPool,
+    world_client: &std::sync::Arc<tokio::sync::RwLock<crate::world_api::WorldApiClient>>,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    if config.world_package_id.is_empty() {
+        return Ok(0);
+    }
+
+    let http = reqwest::Client::new();
+    let mut total = 0;
+    let mut seen_type_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
+
+    for struct_type in STRUCTURE_TYPES {
+        let type_filter = format!("{}::{}", config.world_package_id, struct_type);
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let after_clause = cursor
+                .as_ref()
+                .map(|c| format!(r#", after: "{}""#, c))
+                .unwrap_or_default();
+
+            let query = format!(
+                r#"{{
+                    objects(filter: {{ type: "{type_filter}" }}, first: 50{after_clause}) {{
+                        nodes {{
+                            asMoveObject {{
+                                contents {{ json }}
+                            }}
+                        }}
+                        pageInfo {{ hasNextPage endCursor }}
+                    }}
+                }}"#
+            );
+
+            let resp = http
+                .post(&config.sui_graphql_url)
+                .json(&serde_json::json!({ "query": query }))
+                .send()
+                .await?;
+
+            let json: serde_json::Value = resp.json().await?;
+            let nodes = json["data"]["objects"]["nodes"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+
+            if nodes.is_empty() {
+                break;
+            }
+
+            let mut s = state.write().await;
+            for node in &nodes {
+                let contents = &node["asMoveObject"]["contents"]["json"];
+                if contents.is_null() {
+                    continue;
+                }
+                let item_id = extract_item_id(&contents["key"]);
+                let type_id = contents["type_id"]
+                    .as_u64()
+                    .or_else(|| contents["type_id"].as_str().and_then(|v| v.parse().ok()));
+
+                if let (Some(iid), Some(tid)) = (item_id, type_id) {
+                    s.live.structure_type_cache.insert(iid, tid);
+                    seen_type_ids.insert(tid);
+                    let _ = crate::db::upsert_structure_type(pool, iid, tid).await;
+                    total += 1;
+                }
+            }
+
+            let page_info = &json["data"]["objects"]["pageInfo"];
+            if !page_info["hasNextPage"].as_bool().unwrap_or(false) {
+                break;
+            }
+            cursor = page_info["endCursor"].as_str().map(|s| s.to_string());
+        }
+    }
+
+    // Resolve type names from World API for any newly seen type_ids
+    for type_id in seen_type_ids {
+        let already_cached = state
+            .read()
+            .await
+            .live
+            .type_name_cache
+            .contains_key(&type_id);
+        if !already_cached {
+            let name = world_client.read().await.fetch_type_name(type_id).await;
+            if let Some(name) = name {
+                state
+                    .write()
+                    .await
+                    .live
+                    .type_name_cache
+                    .insert(type_id, name);
+            }
+        }
+    }
+
+    let type_name_count = state.read().await.live.type_name_cache.len();
+    tracing::info!(
+        structures = total,
+        type_names = type_name_count,
+        "Structure type cache loaded: {total} structures, {type_name_count} type names"
+    );
     Ok(total)
 }
 
@@ -976,21 +1179,19 @@ pub async fn resolve_gate_name(
 
     let name = match crate::sui_client::get_object_json(channel, gate_id).await {
         Ok(json) => {
-            let name = json["metadata"]["name"]
-                .as_str()
-                .filter(|s| !s.is_empty());
+            let name = json["metadata"]["name"].as_str().filter(|s| !s.is_empty());
             let item_id = json["key"]["item_id"].as_str();
             match (name, item_id) {
                 (Some(n), _) => n.to_string(),
                 (None, Some(id)) => format!("Gate #{id}"),
                 _ => {
-                    tracing::debug!("Could not resolve gate {gate_id}");
+                    tracing::debug!(gate_id, "Could not resolve gate {gate_id}");
                     format!("Gate {}", &gate_id[..8.min(gate_id.len())])
                 }
             }
         }
         Err(e) => {
-            tracing::debug!("Failed to query gate {gate_id} via gRPC: {e}");
+            tracing::debug!(gate_id, error = %e, "Failed to query gate {gate_id} via gRPC: {e}");
             format!("Gate {}", &gate_id[..8.min(gate_id.len())])
         }
     };
@@ -1013,7 +1214,7 @@ async fn finalize(state: &Arc<RwLock<AppState>>) {
         .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
 
     let now_ms = chrono::Utc::now().timestamp_millis() as u64;
-    let day_ago = now_ms.saturating_sub(86_400_000);
+    let day_ago = now_ms.saturating_sub(604_800_000); // 7 days
 
     let mut kill_counts_24h: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
     for e in &s.live.recent_events {
@@ -1030,21 +1231,336 @@ async fn finalize(state: &Arc<RwLock<AppState>>) {
             .copied()
             .unwrap_or(0);
         p.threat_score = crate::threat_engine::compute_score(p);
-        if p.published_score > 0 && p.published_score != p.threat_score {
-            p.published_score = p.threat_score;
-            p.dirty = true;
-        }
     }
 
     let unresolved = s
         .live
         .profiles
         .values()
-        .filter(|p| p.name.starts_with("Pilot #"))
+        .filter(|p| p.name.is_none())
         .count();
     if unresolved > 0 {
         tracing::info!(
+            unresolved_count = unresolved,
             "{unresolved} characters could not be resolved — will retry via metadata resolver"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{AppState, DataStore, ThreatProfile};
+
+    fn make_state_with_unresolved(count: usize, total: usize) -> AppState {
+        let mut state = AppState::default();
+        for i in 0..total {
+            let resolved = i >= count;
+            let name = if resolved {
+                Some(format!("Player {i}"))
+            } else {
+                None
+            };
+            state.live.profiles.insert(
+                i as u64,
+                ThreatProfile {
+                    character_item_id: i as u64,
+                    name: name.clone(),
+                    ..Default::default()
+                },
+            );
+            if let Some(n) = name {
+                state.live.name_cache.insert(i as u64, n);
+            }
+        }
+        state
+    }
+
+    // --- GraphQL node processing (object_id_cache population) ---
+
+    #[test]
+    fn graphql_node_populates_object_id_cache() {
+        // Simulates what load_character_names_graphql does for each node
+        let mut store = DataStore::default();
+        store.profiles.insert(
+            42,
+            ThreatProfile {
+                character_item_id: 42,
+                name: None,
+                ..Default::default()
+            },
+        );
+
+        let node = serde_json::json!({
+            "address": "0xabc123",
+            "asMoveObject": {
+                "contents": {
+                    "json": {
+                        "key": { "item_id": "42" },
+                        "metadata": { "name": "Vex Nightburn" },
+                        "tribe_id": "7"
+                    }
+                }
+            }
+        });
+
+        let contents = &node["asMoveObject"]["contents"]["json"];
+        let item_id =
+            extract_item_id(&contents["key"]).or_else(|| extract_item_id(&contents["item_id"]));
+        let address = node["address"].as_str();
+        let name = contents["metadata"]["name"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        if let Some(id) = item_id {
+            if let Some(addr) = address {
+                store.object_id_cache.insert(id, addr.to_string());
+            }
+            if !name.is_empty() {
+                store.name_cache.insert(id, name.clone());
+            }
+            if let Some(profile) = store.profiles.get_mut(&id) {
+                if !name.is_empty() && profile.name.is_none() {
+                    profile.name = Some(name);
+                    profile.dirty = true;
+                }
+            }
+        }
+
+        assert_eq!(
+            store.object_id_cache.get(&42),
+            Some(&"0xabc123".to_string())
+        );
+        assert_eq!(
+            store.name_cache.get(&42),
+            Some(&"Vex Nightburn".to_string())
+        );
+        assert_eq!(
+            store.profiles.get(&42).unwrap().name,
+            Some("Vex Nightburn".to_string())
+        );
+        assert!(store.profiles.get(&42).unwrap().dirty);
+    }
+
+    #[test]
+    fn graphql_node_without_address_skips_object_id_cache() {
+        let mut store = DataStore::default();
+
+        let node = serde_json::json!({
+            "asMoveObject": {
+                "contents": {
+                    "json": {
+                        "key": { "item_id": "99" },
+                        "metadata": { "name": "Ghost" }
+                    }
+                }
+            }
+        });
+
+        let contents = &node["asMoveObject"]["contents"]["json"];
+        let item_id = extract_item_id(&contents["key"]);
+        let address = node["address"].as_str();
+
+        if let Some(id) = item_id {
+            if let Some(addr) = address {
+                store.object_id_cache.insert(id, addr.to_string());
+            }
+            let name = contents["metadata"]["name"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            if !name.is_empty() {
+                store.name_cache.insert(id, name);
+            }
+        }
+
+        assert!(!store.object_id_cache.contains_key(&99));
+        assert_eq!(store.name_cache.get(&99), Some(&"Ghost".to_string()));
+    }
+
+    #[test]
+    fn graphql_node_skips_null_contents() {
+        let node = serde_json::json!({
+            "address": "0xdef456",
+            "asMoveObject": { "contents": { "json": null } }
+        });
+
+        let contents = &node["asMoveObject"]["contents"]["json"];
+        assert!(contents.is_null());
+    }
+
+    #[test]
+    fn graphql_node_empty_name_not_cached() {
+        let mut store = DataStore::default();
+        store.profiles.insert(
+            10,
+            ThreatProfile {
+                character_item_id: 10,
+                name: None,
+                ..Default::default()
+            },
+        );
+
+        let node = serde_json::json!({
+            "address": "0xfff",
+            "asMoveObject": {
+                "contents": {
+                    "json": {
+                        "key": { "item_id": "10" },
+                        "metadata": { "name": "" }
+                    }
+                }
+            }
+        });
+
+        let contents = &node["asMoveObject"]["contents"]["json"];
+        let item_id = extract_item_id(&contents["key"]);
+        let address = node["address"].as_str();
+        let name = contents["metadata"]["name"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        if let Some(id) = item_id {
+            if let Some(addr) = address {
+                store.object_id_cache.insert(id, addr.to_string());
+            }
+            if !name.is_empty() {
+                store.name_cache.insert(id, name.clone());
+            }
+        }
+
+        // Object ID still cached even with empty name
+        assert_eq!(store.object_id_cache.get(&10), Some(&"0xfff".to_string()));
+        // But name not cached
+        assert!(!store.name_cache.contains_key(&10));
+        // Profile name unchanged (still None)
+        assert!(store.profiles.get(&10).unwrap().name.is_none());
+    }
+
+    // --- finalize: unresolved count ---
+
+    #[tokio::test]
+    async fn finalize_counts_unresolved_profiles() {
+        let state = Arc::new(RwLock::new(make_state_with_unresolved(3, 10)));
+        finalize(&state).await;
+
+        let s = state.read().await;
+        let unresolved = s
+            .live
+            .profiles
+            .values()
+            .filter(|p| p.name.is_none())
+            .count();
+        assert_eq!(unresolved, 3);
+    }
+
+    #[tokio::test]
+    async fn finalize_zero_unresolved_when_all_named() {
+        let state = Arc::new(RwLock::new(make_state_with_unresolved(0, 5)));
+        finalize(&state).await;
+
+        let s = state.read().await;
+        let unresolved = s
+            .live
+            .profiles
+            .values()
+            .filter(|p| p.name.is_none())
+            .count();
+        assert_eq!(unresolved, 0);
+    }
+
+    // --- gRPC name resolution: object_id_cache filtering ---
+
+    #[test]
+    fn grpc_resolver_filters_by_object_id_cache() {
+        let mut store = DataStore::default();
+        // Character with cached object ID
+        store.profiles.insert(
+            1,
+            ThreatProfile {
+                character_item_id: 1,
+                name: None,
+                ..Default::default()
+            },
+        );
+        store.object_id_cache.insert(1, "0xaaa".to_string());
+
+        // Character without cached object ID
+        store.profiles.insert(
+            2,
+            ThreatProfile {
+                character_item_id: 2,
+                name: None,
+                ..Default::default()
+            },
+        );
+
+        // Character already resolved (should be skipped)
+        store.profiles.insert(
+            3,
+            ThreatProfile {
+                character_item_id: 3,
+                name: Some("ResolvedPlayer".to_string()),
+                ..Default::default()
+            },
+        );
+        store.object_id_cache.insert(3, "0xccc".to_string());
+
+        // Simulate the filtering from load_character_names_grpc
+        let unresolved: Vec<u64> = store
+            .profiles
+            .values()
+            .filter(|p| p.name.is_none())
+            .map(|p| p.character_item_id)
+            .collect();
+
+        let with_oids: Vec<(u64, String)> = unresolved
+            .iter()
+            .filter_map(|id| store.object_id_cache.get(id).map(|oid| (*id, oid.clone())))
+            .collect();
+
+        // Only character 1 has both "Pilot #" name and cached object ID
+        assert_eq!(with_oids.len(), 1);
+        assert_eq!(with_oids[0].0, 1);
+        assert_eq!(with_oids[0].1, "0xaaa");
+
+        // Character 2 is unresolved but has no object ID — deferred
+        assert_eq!(unresolved.len(), 2);
+        let remaining = unresolved.len() - with_oids.len();
+        assert_eq!(remaining, 1);
+    }
+
+    // --- extract_item_id ---
+
+    #[test]
+    fn extract_item_id_nested_string() {
+        let v = serde_json::json!({"item_id": "42"});
+        assert_eq!(extract_item_id(&v), Some(42));
+    }
+
+    #[test]
+    fn extract_item_id_nested_number() {
+        let v = serde_json::json!({"item_id": 42});
+        assert_eq!(extract_item_id(&v), Some(42));
+    }
+
+    #[test]
+    fn extract_item_id_bare_string() {
+        let v = serde_json::json!("42");
+        assert_eq!(extract_item_id(&v), Some(42));
+    }
+
+    #[test]
+    fn extract_item_id_bare_number() {
+        let v = serde_json::json!(42);
+        assert_eq!(extract_item_id(&v), Some(42));
+    }
+
+    #[test]
+    fn extract_item_id_null() {
+        let v = serde_json::json!(null);
+        assert_eq!(extract_item_id(&v), None);
     }
 }

@@ -1,3 +1,4 @@
+// Tests for ThreatLeaderboard: the ranked pilot list showing threat tiers, K/D, and selection behaviour
 import { render, screen } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { ThreatLeaderboard } from "../ThreatLeaderboard";
@@ -97,6 +98,7 @@ describe("ThreatLeaderboard", () => {
       />
     ));
 
+    // Click the card element (glass-card wrapper) rather than the text node directly
     (
       screen
         .getByText("Pilot #42")

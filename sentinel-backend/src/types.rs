@@ -5,7 +5,7 @@ use std::collections::{HashMap, VecDeque};
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct ThreatProfile {
     pub character_item_id: u64,
-    pub name: String,
+    pub name: Option<String>,
     pub threat_score: u64,
     pub kill_count: u64,
     pub death_count: u64,
@@ -22,9 +22,6 @@ pub struct ThreatProfile {
     /// Whether this profile has been modified since last DB sync
     #[serde(skip)]
     pub dirty: bool,
-    /// Last score published on-chain (to avoid re-publishing unchanged scores)
-    #[serde(skip)]
-    pub published_score: u64,
 }
 
 /// A raw event captured from the checkpoint stream.
@@ -43,6 +40,8 @@ pub struct AggregateStats {
     pub kills_24h: u64,
     pub top_system: String,
     pub total_events: u64,
+    /// True when the event ring-buffer is full — the real 24h count may be higher.
+    pub events_at_cap: bool,
 }
 
 /// A single data store (profiles + events + names).
@@ -58,13 +57,33 @@ pub struct DataStore {
     pub object_id_cache: HashMap<u64, String>,
     /// Gate object ID → display name cache (populated via gRPC lookups)
     pub gate_name_cache: HashMap<String, String>,
+    /// structure item_id → type_id (persisted to DB, populated lazily on structure kills)
+    pub structure_type_cache: HashMap<u64, u64>,
+    /// type_id → human name (in-memory only, fetched from World API, e.g. 92279 → "Mini Turret")
+    pub type_name_cache: HashMap<u64, String>,
 }
 
 impl DataStore {
+    /// Resolve a structure's display name from its item_id.
+    /// Returns e.g. "Mini Turret", "Mini Gate", or "Structure" as fallback.
+    pub fn resolve_structure_name(&self, item_id: u64) -> String {
+        self.structure_type_cache
+            .get(&item_id)
+            .and_then(|type_id| self.type_name_cache.get(type_id))
+            .cloned()
+            .unwrap_or_else(|| "Structure".to_string())
+    }
+}
+
+impl DataStore {
+    /// Prepend an event to the front of the ring-buffer and broadcast it over SSE.
+    /// `new_character` events go into `new_pilot_events`; all others into `recent_events`.
+    /// `recent_events` is capped at `cap`; `new_pilot_events` is capped at 500.
     pub fn push_event(
         &mut self,
         event: RawEvent,
         sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+        cap: usize,
     ) {
         if let Some(tx) = sse_tx {
             if let Ok(json) = serde_json::to_string(&event) {
@@ -78,13 +97,17 @@ impl DataStore {
             }
         } else {
             self.recent_events.push_front(event);
-            if self.recent_events.len() > 1000 {
+            if self.recent_events.len() > cap {
                 self.recent_events.pop_back();
             }
         }
     }
 
-    pub fn compute_stats(&self) -> AggregateStats {
+    /// Compute aggregate dashboard stats from the current profile + event set.
+    /// `total_events` counts only events from the last 24 hours.
+    /// `events_at_cap` is true when the ring-buffer is full (real count may be higher).
+    /// `top_system` is the solar system ID or name where the most pilots were last seen.
+    pub fn compute_stats(&self, cap: usize) -> AggregateStats {
         let total = self.profiles.len() as u64;
         let sum_score: u64 = self.profiles.values().map(|p| p.threat_score).sum();
         let avg = if total > 0 { sum_score / total } else { 0 };
@@ -137,6 +160,7 @@ impl DataStore {
             kills_24h,
             top_system,
             total_events: events_24h,
+            events_at_cap: self.recent_events.len() >= cap,
         }
     }
 }
@@ -148,6 +172,8 @@ pub struct AppState {
     pub live: DataStore,
     /// Last processed checkpoint cursor
     pub last_checkpoint: Option<u64>,
+    /// Wall-clock time when the last checkpoint was processed (for stream health checks)
+    pub last_checkpoint_at: Option<std::time::Instant>,
     /// SSE broadcast channel sender
     pub sse_tx: Option<tokio::sync::broadcast::Sender<String>>,
 }
@@ -167,6 +193,7 @@ mod tests {
                 data: serde_json::json!({}),
             },
             &no_sse,
+            1000,
         );
         store.push_event(
             RawEvent {
@@ -175,6 +202,7 @@ mod tests {
                 data: serde_json::json!({}),
             },
             &no_sse,
+            1000,
         );
 
         assert_eq!(store.recent_events.len(), 2);
@@ -183,10 +211,10 @@ mod tests {
     }
 
     #[test]
-    fn push_event_caps_at_1000() {
+    fn push_event_caps_at_configured_limit() {
         let mut store = DataStore::default();
         let no_sse: Option<tokio::sync::broadcast::Sender<String>> = None;
-        for i in 0..1200 {
+        for i in 0..1200u64 {
             store.push_event(
                 RawEvent {
                     event_type: "kill".into(),
@@ -194,6 +222,7 @@ mod tests {
                     data: serde_json::json!({}),
                 },
                 &no_sse,
+                1000,
             );
         }
         assert_eq!(store.recent_events.len(), 1000);
@@ -203,7 +232,7 @@ mod tests {
     #[test]
     fn compute_stats_empty() {
         let store = DataStore::default();
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.total_tracked, 0);
         assert_eq!(stats.avg_score, 0);
         assert_eq!(stats.kills_24h, 0);
@@ -227,7 +256,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.total_tracked, 2);
         assert_eq!(stats.avg_score, 5000);
     }
@@ -249,7 +278,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.kills_24h, 8);
     }
 
@@ -277,7 +306,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.top_system, "J-1042");
     }
 
@@ -298,7 +327,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.top_system, "K-9731");
     }
 
@@ -327,6 +356,7 @@ mod tests {
                 data: serde_json::json!({"killer": 42}),
             },
             &sse,
+            1000,
         );
 
         let msg = rx.try_recv().unwrap();

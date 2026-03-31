@@ -1,3 +1,4 @@
+// Tests for ThreatCard: the detail panel rendered when a pilot is selected from the leaderboard
 import { render, screen } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { ThreatCard } from "../ThreatCard";
@@ -33,6 +34,7 @@ describe("ThreatCard", () => {
   });
 
   it("displays score as out of 100", () => {
+    // Raw score 8500 is displayed normalised to a 0–100 scale (8500 / 100 = 85.00)
     render(() => <ThreatCard profile={mockProfile} onClose={() => {}} />);
     expect(screen.getByText("85.00")).toBeTruthy();
   });
@@ -79,6 +81,7 @@ describe("ThreatCard", () => {
   });
 
   it("handles zero deaths gracefully", () => {
+    // K/D with 0 deaths should not divide-by-zero; displayed as kill_count (50 / 1 = 50.00)
     const profile = { ...mockProfile, death_count: 0, kill_count: 50 };
     render(() => <ThreatCard profile={profile} onClose={() => {}} />);
     expect(screen.getByText("50.00")).toBeTruthy();

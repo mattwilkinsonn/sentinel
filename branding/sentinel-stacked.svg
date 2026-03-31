@@ -1,0 +1,35 @@
+<svg width="400" height="280" viewBox="0 0 400 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon centered horizontally, scaled 2.5x from original 56x58 viewBox -->
+  <g transform="translate(130, 16) scale(2.5)">
+    <path d="M28 3 L50 11 L50 33 L28 55 L6 33 L6 11 Z" stroke="#5b21b6" stroke-width="2.5" stroke-linejoin="round" fill="none"/>
+    <path d="M28 13 L42 19 L42 31 L28 43 L14 31 L14 19 Z" stroke="#7c3aed" stroke-width="1.2" stroke-linejoin="round" fill="none" opacity="0.4"/>
+    <line x1="28" y1="3" x2="28" y2="22" stroke="#5b21b6" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="28" y1="22" x2="19" y2="31" stroke="#5b21b6" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="28" y1="22" x2="37" y2="31" stroke="#5b21b6" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="19" y1="31" x2="19" y2="40" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+    <line x1="37" y1="31" x2="37" y2="40" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+    <circle cx="28" cy="22" r="3.5" fill="#5b21b6"/>
+  </g>
+  <!-- Wordmark centered below icon -->
+  <text
+    x="200"
+    y="222"
+    font-family="Space Grotesk, system-ui, sans-serif"
+    font-size="52"
+    font-weight="900"
+    letter-spacing="8"
+    fill="#5b21b6"
+    text-anchor="middle"
+  >SENTINEL</text>
+  <!-- Tagline centered below wordmark -->
+  <text
+    x="200"
+    y="252"
+    font-family="Space Grotesk, system-ui, sans-serif"
+    font-size="14"
+    font-weight="700"
+    letter-spacing="4"
+    fill="#7c3aed"
+    text-anchor="middle"
+  >THREAT INTELLIGENCE</text>
+</svg>

@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS threat_profiles (
     tribe_name TEXT NOT NULL DEFAULT '',
     recent_kills_24h BIGINT NOT NULL DEFAULT 0,
     systems_visited BIGINT NOT NULL DEFAULT 0,
-    published_score BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
