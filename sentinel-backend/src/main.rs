@@ -172,8 +172,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // On-chain publisher
     let publisher_state = state.clone();
     let publisher_config = config.clone();
+    let publisher_sse_tx = sse_tx.clone();
     tokio::spawn(async move {
-        publisher::publish_loop(publisher_config, publisher_state).await;
+        publisher::publish_loop(publisher_config, publisher_state, Some(publisher_sse_tx)).await;
     });
 
     // Name resolver

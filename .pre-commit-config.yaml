@@ -41,7 +41,7 @@ repos:
       - id: biome
         name: biome (lint + format)
         language: system
-        entry: bunx biome check .
+        entry: bunx biome check --write .
         files: \.(ts|tsx)$
         pass_filenames: false
       - id: prettier-move
@@ -49,7 +49,7 @@ repos:
         language: system
         entry: >-
           sh -c 'cd ts-scripts && bunx prettier
-          --plugin @mysten/prettier-plugin-move --check
+          --plugin @mysten/prettier-plugin-move --write
           "../move-contracts/*/sources/**/*.move"
           "../move-contracts/*/tests/**/*.move"'
         files: \.move$

@@ -1,9 +1,11 @@
 import { Navigation, Shield, Skull, Target, Trophy, Zap } from "lucide-solid";
+import type { JSX } from "solid-js";
 import { type Component, createSignal, For, onCleanup, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { LoadingState } from "../LoadingState";
 import { Tooltip } from "../Tooltip";
 import type { RawEvent, ThreatProfile } from "../types";
+import { getThreatColor, getThreatTier } from "../types";
 
 type FeedViewProps = {
   /** Pre-filtered events (name-resolution filter applied by the parent). */
@@ -32,7 +34,7 @@ type EventDisplay = {
   /** CSS colour value used for the left accent border on each event row. */
   borderColor: string;
   /** Generates the one-line human-readable summary for a given event payload. */
-  format: (data: Record<string, unknown>, l: Lookups) => string;
+  format: (data: Record<string, unknown>, l: Lookups) => JSX.Element;
 };
 
 /**
@@ -107,8 +109,31 @@ const eventConfig: Record<string, EventDisplay> = {
     icon: Shield,
     color: "text-accent-gold",
     borderColor: "var(--color-accent-gold)",
-    format: (d, l) =>
-      `${l.n(d.character_id)} threat score updated to ${d.new_score ?? "?"}`,
+    format: (d, l) => {
+      const score = d.new_score as number | null | undefined;
+      const delta = d.delta as number | null | undefined;
+      const oldScore = score != null && delta != null ? score - delta : null;
+      const verb = delta != null && delta >= 0 ? "increased" : "decreased";
+      const verbColor =
+        delta != null && delta >= 0
+          ? "var(--color-accent-red)"
+          : "var(--color-accent-green)";
+      const fmt = (v: number) => (v / 100).toFixed(2);
+      const colorFor = (v: number) => getThreatColor(getThreatTier(v));
+      return (
+        <span>
+          {l.n(d.character_id)} threat score{" "}
+          <span style={{ color: verbColor }}>{verb}</span> from{" "}
+          <span style={oldScore != null ? { color: colorFor(oldScore) } : {}}>
+            {oldScore != null ? fmt(oldScore) : "?"}
+          </span>{" "}
+          to{" "}
+          <span style={score != null ? { color: colorFor(score) } : {}}>
+            {score != null ? fmt(score) : "?"}
+          </span>
+        </span>
+      );
+    },
   },
   gate_blocked: {
     icon: Zap,
@@ -256,10 +281,18 @@ export function FeedView(props: FeedViewProps) {
     return counts;
   };
 
+  const significantEvents = () =>
+    props.events.filter(
+      (e) =>
+        e.event_type !== "score_change" ||
+        Math.abs(((e.data as Record<string, unknown>).delta as number) ?? 0) >=
+          500,
+    );
+
   const filteredEvents = () => {
     const f = filter();
-    if (!f) return props.events;
-    return props.events.filter((e) => e.event_type === f);
+    if (!f) return significantEvents();
+    return significantEvents().filter((e) => e.event_type === f);
   };
 
   return (

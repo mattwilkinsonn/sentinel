@@ -56,7 +56,11 @@ struct ThreatEntryValue {
 /// per-cycle chain reads. The cache is updated after every successful publish batch.
 ///
 /// Exits early if required config is missing. Uses exponential backoff on consecutive failures.
-pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
+pub async fn publish_loop(
+    config: AppConfig,
+    state: Arc<RwLock<AppState>>,
+    sse_tx: Option<tokio::sync::broadcast::Sender<String>>,
+) {
     let interval = std::time::Duration::from_millis(config.publish_interval_ms);
 
     if config.sentinel_package_id.is_empty() || config.threat_registry_id.is_empty() {
@@ -213,9 +217,35 @@ pub async fn publish_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
             {
                 Ok((digest, new_cap)) => {
                     tracing::info!(scores_published = chunk.len(), tx_digest = %digest, "Published {} threat scores — tx: {digest}", chunk.len());
-                    // Update local cache so we don't re-publish next cycle
-                    for p in chunk {
-                        published_scores.insert(p.character_item_id, p.threat_score);
+                    // Update local cache and emit feed events for published profiles
+                    {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        let mut s = state.write().await;
+                        let cap = config.max_recent_events;
+                        for p in chunk {
+                            let old_score = published_scores
+                                .get(&p.character_item_id)
+                                .copied()
+                                .unwrap_or(0);
+                            let delta = p.threat_score as i64 - old_score as i64;
+                            published_scores.insert(p.character_item_id, p.threat_score);
+                            s.live.push_event(
+                                crate::types::RawEvent {
+                                    event_type: "score_change".into(),
+                                    timestamp_ms: now_ms,
+                                    data: serde_json::json!({
+                                        "character_id": p.character_item_id,
+                                        "new_score": p.threat_score,
+                                        "delta": delta,
+                                    }),
+                                },
+                                &sse_tx,
+                                cap,
+                            );
+                        }
                     }
                     cap_override = new_cap;
                 }
