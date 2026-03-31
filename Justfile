@@ -49,7 +49,7 @@ backend-test:
 
 # Run backend integration tests (requires Postgres)
 backend-test-integration: db
-    cd sentinel-backend && cargo test --test db_integration
+    cd sentinel-backend && cargo test --test db_integration --test graphql_mock_tests --test grpc_mock_tests --test logging
 
 # Run integration tests against real Sui testnet (gRPC + GraphQL)
 backend-test-live:

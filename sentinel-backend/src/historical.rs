@@ -588,19 +588,6 @@ pub async fn load_character_names_graphql(
         return Ok(0);
     }
 
-    // If only a handful of names are missing, skip the expensive full-scan and let
-    // Phase 3 (gRPC batch fetch) + the background name_resolver_loop handle them.
-    const GRAPHQL_NAME_SCAN_THRESHOLD: usize = 50;
-    if unresolved <= GRAPHQL_NAME_SCAN_THRESHOLD {
-        tracing::info!(
-            unresolved,
-            total_profiles,
-            threshold = GRAPHQL_NAME_SCAN_THRESHOLD,
-            "Skipping GraphQL name scan — few unresolved names, deferring to gRPC batch"
-        );
-        return Ok(0);
-    }
-
     tracing::info!(
         unresolved,
         total_profiles,
