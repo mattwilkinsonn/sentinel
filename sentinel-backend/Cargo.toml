@@ -16,7 +16,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # gRPC client (Sui checkpoint streaming)
 tonic = { version = "0.13", features = ["transport", "channel", "tls-webpki-roots"] }
 prost = "0.13"
-prost-types = "0.13"
+prost-types = "0.14"
 
 # Sui lightweight SDK (all from crates.io)
 sui-sdk-types = { version = "0.3", features = ["serde", "hash"] }
