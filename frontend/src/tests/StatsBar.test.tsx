@@ -46,7 +46,7 @@ describe("StatsBar", () => {
     ));
 
     expect(screen.getByText("EVENTS 24H")).toBeTruthy();
-    expect(screen.getByText("KILLS 24H")).toBeTruthy();
+    expect(screen.getByText("KILLS 7D")).toBeTruthy();
     expect(screen.getByText("ACTIVE THREATS")).toBeTruthy();
     expect(screen.getByText("TOP SYSTEM")).toBeTruthy();
     expect(screen.getByText("TRACKED")).toBeTruthy();
@@ -100,7 +100,7 @@ describe("StatsBar", () => {
     screen.getByText("TRACKED").closest("button")?.click();
     expect(onClick).toHaveBeenCalledWith("tracked");
 
-    screen.getByText("KILLS 24H").closest("button")?.click();
+    screen.getByText("KILLS 7D").closest("button")?.click();
     expect(onClick).toHaveBeenCalledWith("kills");
 
     screen.getByText("TOP SYSTEM").closest("button")?.click();
