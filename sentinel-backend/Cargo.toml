@@ -62,5 +62,5 @@ tower = "0.5"
 serial_test = "3"
 
 [build-dependencies]
-tonic-build = "0.13"
+tonic-build = "0.14"
 prost-build = "0.13"
