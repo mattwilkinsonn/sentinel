@@ -117,15 +117,16 @@ pub async fn load_historical_killmails(
         s.live.profiles.keys().copied().collect()
     };
 
+    // Temporarily disabled for debugging — re-enable once feed confirmed working.
     // If profiles are already seeded from the DB, skip the full GraphQL scan.
     // New killmails since the last saved checkpoint are caught by the gRPC replay.
-    if !existing_profiles.is_empty() {
-        tracing::info!(
-            profiles = existing_profiles.len(),
-            "Skipping historical killmail load — profiles already seeded from DB"
-        );
-        return Ok(existing_profiles.len());
-    }
+    // if !existing_profiles.is_empty() {
+    //     tracing::info!(
+    //         profiles = existing_profiles.len(),
+    //         "Skipping historical killmail load — profiles already seeded from DB"
+    //     );
+    //     return Ok(existing_profiles.len());
+    // }
 
     let has_existing_kills = {
         let s = state.read().await;
@@ -285,6 +286,7 @@ pub async fn load_historical_killmails(
                     data: evt_data,
                 },
                 &None,
+                config.max_recent_events,
             );
 
             total += 1;
@@ -327,13 +329,7 @@ pub async fn load_character_events(
         let s = state.read().await;
         s.live.profiles.len()
     };
-    if existing_profiles > 0 {
-        tracing::info!(
-            profiles = existing_profiles,
-            "Skipping character events — profiles already seeded from DB"
-        );
-        return Ok(existing_profiles);
-    }
+    let _ = existing_profiles; // warm restart skip removed
 
     let http = reqwest::Client::new();
     let mut cursor: Option<String> = None;
@@ -403,6 +399,7 @@ pub async fn load_character_events(
                         data: serde_json::json!({ "character_id": id }),
                     },
                     &None,
+                    config.max_recent_events,
                 );
 
                 total += 1;
@@ -438,10 +435,7 @@ pub async fn load_jump_events(
         let profiles: std::collections::HashSet<u64> = s.live.profiles.keys().copied().collect();
         (has, profiles)
     };
-    if has_existing {
-        tracing::info!("Skipping jump events — already have them from DB");
-        return Ok(0);
-    }
+    let _ = has_existing; // warm restart skip removed
 
     let http = reqwest::Client::new();
     let mut cursor: Option<String> = None;
@@ -546,6 +540,7 @@ pub async fn load_jump_events(
                         }),
                     },
                     &None,
+                    config.max_recent_events,
                 );
 
                 total += 1;
@@ -588,21 +583,7 @@ pub async fn load_character_names_graphql(
         return Ok(0);
     }
 
-    // Skip the expensive full scan if this looks like a warm restart: most names are
-    // already in the cache and only a handful are missing. On a cold start all profiles
-    // are unresolved (unresolved == total_profiles), so the condition won't trigger.
-    let threshold = config.graphql_name_scan_threshold;
-    let resolved = total_profiles - unresolved;
-    if unresolved <= threshold && resolved > 0 {
-        tracing::info!(
-            unresolved,
-            resolved,
-            total_profiles,
-            threshold,
-            "Skipping GraphQL name scan — warm restart, deferring stragglers to gRPC batch"
-        );
-        return Ok(0);
-    }
+    // warm restart skip removed
 
     tracing::info!(
         unresolved,
@@ -1233,7 +1214,7 @@ async fn finalize(state: &Arc<RwLock<AppState>>) {
         .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
 
     let now_ms = chrono::Utc::now().timestamp_millis() as u64;
-    let day_ago = now_ms.saturating_sub(86_400_000);
+    let day_ago = now_ms.saturating_sub(604_800_000); // 7 days
 
     let mut kill_counts_24h: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
     for e in &s.live.recent_events {

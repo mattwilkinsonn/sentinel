@@ -1,40 +1,42 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg-primary: #0b0b0b;
-  --color-bg-card: rgba(250, 250, 229, 0.03);
-  --color-bg-card-hover: rgba(250, 250, 229, 0.06);
-  --color-text-primary: #fafae5;
-  --color-text-secondary: rgba(250, 250, 229, 0.6);
-  --color-text-muted: rgba(250, 250, 229, 0.4);
-  --color-border-default: rgba(250, 250, 229, 0.12);
-  --color-border-hover: rgba(250, 250, 229, 0.25);
-  --color-accent-gold: #ffd700;
-  --color-accent-cyan: #00e5ff;
-  --color-accent-red: #ff4444;
-  --color-accent-green: #44ff88;
-  --color-accent-purple: #a855f7;
-  --color-accent-orange: #ff8c00;
-  --color-accent-blue: #88c8ff;
-  --color-tier-bronze: #cd7f32;
-  --color-tier-silver: #c0c0c0;
-  --color-tier-gold: #ffd700;
-  --color-tier-diamond: #b9f2ff;
-  --color-threat-low: #44ff88;
-  --color-threat-moderate: #ffd700;
-  --color-threat-high: #ff8c00;
-  --color-threat-critical: #ff4444;
+  --color-bg-primary: #ffffff;
+  --color-bg-card: #faf9ff;
+  --color-bg-card-hover: #f0ebff;
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #9ca3af;
+  --color-border-default: #ede8ff;
+  --color-border-hover: #c4b5fd;
+  --color-accent-gold: #d97706;
+  --color-accent-cyan: #0891b2;
+  --color-accent-red: #dc2626;
+  --color-accent-green: #16a34a;
+  --color-accent-purple: #7c3aed;
+  --color-accent-orange: #ea580c;
+  --color-accent-blue: #2563eb;
+  --color-accent-indigo: #4f46e5;
+  --color-accent-rose: #db2777;
+  --color-tier-bronze: #b45309;
+  --color-tier-silver: #64748b;
+  --color-tier-gold: #d97706;
+  --color-tier-diamond: #0891b2;
+  --color-threat-low: #16a34a;
+  --color-threat-moderate: #d97706;
+  --color-threat-high: #ea580c;
+  --color-threat-critical: #dc2626;
 }
 
 @keyframes pulse-urgent {
   0%,
   100% {
-    border-color: rgba(255, 68, 68, 0.3);
-    box-shadow: 0 0 0px rgba(255, 68, 68, 0);
+    border-color: rgba(220, 38, 38, 0.3);
+    box-shadow: 0 0 0px rgba(220, 38, 38, 0);
   }
   50% {
-    border-color: rgba(255, 68, 68, 0.8);
-    box-shadow: 0 0 15px rgba(255, 68, 68, 0.25);
+    border-color: rgba(220, 38, 38, 0.8);
+    box-shadow: 0 0 15px rgba(220, 38, 38, 0.2);
   }
 }
 @keyframes pulse-gold {
@@ -83,40 +85,77 @@
   box-sizing: border-box;
 }
 
-body {
-  font-family: "Favorit", "ABC Favorit Mono", monospace;
-  font-weight: 300;
-  font-size: 16px;
-  line-height: 150%;
-  letter-spacing: -0.02em;
-  color: var(--color-text-primary);
-  background-color: var(--color-bg-primary);
-  margin: 0;
+@layer base {
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 150%;
+    letter-spacing: -0.01em;
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-primary);
+    margin: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 120%;
+    margin: 0;
+  }
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: "Frontier Disket Mono", "Fronter Disket Mono", monospace;
-  font-weight: 400;
-  color: var(--color-text-primary);
-  line-height: 120%;
-  margin: 0;
+@layer components {
+  .stat-nav-card {
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-nav-card::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--card-color);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.2s ease;
+    border-radius: 0 0 8px 8px;
+  }
+  .stat-nav-card:hover::after {
+    transform: scaleX(1);
+  }
+  .stat-nav-card:hover .stat-view-label {
+    color: var(--card-color);
+  }
+  .stat-nav-card.stat-nav-active,
+  .stat-nav-card.stat-nav-active:hover {
+    border-color: var(--card-color);
+  }
+  .stat-nav-card.stat-nav-active .stat-view-label {
+    color: var(--card-color);
+  }
 }
 
-.glass-card {
-  background: var(--color-bg-card);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border-default);
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-.glass-card:hover {
-  background: var(--color-bg-card-hover);
-  border-color: var(--color-border-hover);
+@layer components {
+  .glass-card {
+    background: var(--color-bg-card);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border-default);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+  .glass-card:hover {
+    background: var(--color-bg-card-hover);
+    border-color: var(--color-border-hover);
+  }
 }
 
 .neon-glow-gold {
@@ -144,8 +183,8 @@ h6 {
     0deg,
     transparent,
     transparent 2px,
-    rgba(250, 250, 229, 0.02) 2px,
-    rgba(250, 250, 229, 0.02) 4px
+    rgba(45, 10, 110, 0.02) 2px,
+    rgba(45, 10, 110, 0.02) 4px
   );
   pointer-events: none;
 }
@@ -160,8 +199,8 @@ h6 {
 }
 
 button {
-  font-family: "Frontier Disket Mono", monospace;
-  font-weight: 300;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 700;
   font-size: 14px;
   line-height: 150%;
   letter-spacing: 0.02em;
@@ -172,7 +211,7 @@ button {
 input,
 select,
 textarea {
-  font-family: "Favorit", "ABC Favorit Mono", monospace;
+  font-family: "Inter", system-ui, sans-serif;
   font-size: 14px;
   background: rgba(250, 250, 229, 0.05);
   border: 1px solid var(--color-border-default);
@@ -235,7 +274,7 @@ input:focus {
 /* New event highlight flash */
 @keyframes event-flash {
   0% {
-    background-color: rgba(255, 68, 68, 0.15);
+    background-color: rgba(220, 38, 38, 0.08);
   }
   100% {
     background-color: transparent;
@@ -247,11 +286,11 @@ input:focus {
 
 /* Kobalte tooltip */
 .tooltip-content {
-  font-family: "Favorit", "ABC Favorit Mono", monospace;
+  font-family: "Inter", system-ui, sans-serif;
   font-size: 12px;
   line-height: 1.4;
   color: var(--color-text-primary);
-  background: rgba(20, 20, 20, 0.95);
+  background: #ffffff;
   backdrop-filter: blur(12px);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
@@ -259,12 +298,13 @@ input:focus {
   max-width: 240px;
   z-index: 100;
   animation: tooltip-in 0.15s ease-out;
+  box-shadow: 0 4px 16px rgba(45, 10, 110, 0.12);
 }
 .tooltip-content[data-closed] {
   animation: tooltip-out 0.1s ease-in;
 }
 .tooltip-arrow {
-  fill: rgba(20, 20, 20, 0.95);
+  fill: #ffffff;
 }
 @keyframes tooltip-in {
   from {

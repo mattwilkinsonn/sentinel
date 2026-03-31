@@ -100,7 +100,7 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                         </span>
                       ))}
                     </div>
-                    <div style="height:6px;border-radius:3px;background:rgba(250,250,229,0.08);overflow:hidden">
+                    <div style="height:6px;border-radius:3px;background:rgba(17,24,39,0.08);overflow:hidden">
                       <div
                         style={`width:${pct()}%;height:6px;border-radius:3px;background:${color()}`}
                       />

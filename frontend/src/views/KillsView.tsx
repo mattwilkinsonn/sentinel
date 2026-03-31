@@ -40,7 +40,7 @@ export function KillsView(props: KillsViewProps) {
       <h3 class="text-lg tracking-wider" style="margin-bottom:1rem">
         KILL STATISTICS
         <span class="text-text-muted text-sm ml-2">
-          {totalKills()} total · {totalRecent()} last 24h
+          {totalKills()} total · {totalRecent()} last 7d
         </span>
       </h3>
 
@@ -57,7 +57,7 @@ export function KillsView(props: KillsViewProps) {
           <div class="flex items-center gap-2 mb-4">
             <Clock size={16} class="text-accent-red" />
             <h4 class="text-sm tracking-wider text-accent-red">
-              MOST ACTIVE (24H)
+              MOST ACTIVE (7D)
             </h4>
           </div>
           <div class="flex flex-col gap-2">
@@ -75,7 +75,7 @@ export function KillsView(props: KillsViewProps) {
                         isExp() ? null : profile.character_item_id,
                       )
                     }
-                    statLabel="kills 24h"
+                    statLabel="kills 7d"
                     statValue={profile.recent_kills_24h}
                     statColor="text-accent-red"
                     extra={

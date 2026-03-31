@@ -69,7 +69,7 @@ fn test_config(graphql_url: &str) -> AppConfig {
         crates_log_level: tracing::Level::WARN,
         log_format: LogFormat::Pretty,
         discord_token: "unused".into(),
-        graphql_name_scan_threshold: 50,
+        max_recent_events: 1000,
     }
 }
 
@@ -350,6 +350,7 @@ async fn load_character_events_skips_when_existing() {
                 data: serde_json::json!({}),
             },
             &None,
+            1000,
         );
     }
 
@@ -453,6 +454,7 @@ async fn load_jump_events_skips_when_existing() {
                 data: serde_json::json!({}),
             },
             &None,
+            1000,
         );
     }
 

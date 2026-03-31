@@ -26,12 +26,17 @@ export default function App() {
       <header class="sticky top-0 z-50 glass-card rounded-none border-x-0 border-t-0">
         <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div class="flex items-center gap-6">
+            <img
+              src="/sentinel-icon.svg"
+              alt="Sentinel"
+              class="h-12 shrink-0"
+            />
             <button
               type="button"
               onClick={() => setTab("sentinel")}
               class={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-all bg-transparent border-none ${
                 tab() === "sentinel"
-                  ? "text-accent-red border-b-2 border-b-accent-red"
+                  ? "text-accent-purple border-b-2 border-b-accent-purple"
                   : "text-text-secondary hover:text-text-primary"
               }`}
             >

@@ -18,28 +18,10 @@ type StatsBarProps = {
 /**
  * Six-tile navigation bar displaying key aggregate metrics. Each tile is
  * clickable and navigates to its associated sub-view; the currently active
- * tile is highlighted with a cyan border. Tooltips explain each metric on hover.
+ * tile is highlighted with its accent color border and underline. Tooltips explain each metric on hover.
  */
 export function StatsBar(props: StatsBarProps) {
   const statItems = () => [
-    {
-      label: "EVENTS 24H",
-      value: props.stats.total_events.toString(),
-      icon: Radio,
-      color: "text-accent-green",
-      view: "feed" as SubView,
-      tooltip:
-        "Events tracked in the last 24 hours. Click to view the live intel feed.",
-    },
-    {
-      label: "KILLS 24H",
-      value: props.stats.kills_24h.toString(),
-      icon: Skull,
-      color: "text-accent-red",
-      view: "kills" as SubView,
-      tooltip:
-        "Total kills recorded across all pilots in the last 24 hours. Click to view kill statistics.",
-    },
     {
       label: "ACTIVE THREATS",
       value: props.profiles
@@ -47,6 +29,7 @@ export function StatsBar(props: StatsBarProps) {
         .length.toString(),
       icon: Activity,
       color: "text-accent-gold",
+      accentColor: "var(--color-accent-gold)",
       view: "leaderboard" as SubView,
       tooltip:
         "Pilots with threat score above MODERATE (25+). Click to view the threat leaderboard.",
@@ -55,16 +38,40 @@ export function StatsBar(props: StatsBarProps) {
       label: "TOP SYSTEM",
       value: props.stats.top_system || "—",
       icon: MapPin,
-      color: "text-accent-purple",
+      color: "text-accent-indigo",
+      accentColor: "var(--color-accent-indigo)",
       view: "systems" as SubView,
       tooltip:
         "The solar system with the most tracked pilots. Click to view system intelligence.",
+    },
+    {
+      label: "EVENTS 24H",
+      value:
+        props.stats.total_events.toString() +
+        (props.stats.events_at_cap ? "+" : ""),
+      icon: Radio,
+      color: "text-accent-green",
+      accentColor: "var(--color-accent-green)",
+      view: "feed" as SubView,
+      tooltip:
+        "Events tracked in the last 24 hours. Click to view the live intel feed.",
+    },
+    {
+      label: "KILLS 7D",
+      value: props.stats.kills_24h.toString(),
+      icon: Skull,
+      color: "text-accent-red",
+      accentColor: "var(--color-accent-red)",
+      view: "kills" as SubView,
+      tooltip:
+        "Total kills recorded across all pilots in the last 7 days. Click to view kill statistics.",
     },
     {
       label: "TRACKED",
       value: props.stats.total_tracked.toString(),
       icon: Shield,
       color: "text-accent-cyan",
+      accentColor: "var(--color-accent-cyan)",
       view: "tracked" as SubView,
       tooltip:
         "Total number of pilots being monitored by the threat network. Click to view all tracked pilots.",
@@ -74,6 +81,7 @@ export function StatsBar(props: StatsBarProps) {
       value: props.newPilotCount.toString(),
       icon: UserPlus,
       color: "text-text-primary",
+      accentColor: "var(--color-text-primary)",
       view: "pilots" as SubView,
       tooltip:
         "Newly detected pilots on the frontier. Click to view recent arrivals.",
@@ -87,9 +95,10 @@ export function StatsBar(props: StatsBarProps) {
           <button
             type="button"
             onClick={() => props.onStatClick(item.view)}
-            class={`glass-card p-4 text-left bg-transparent transition-all w-full h-full ${
+            style={`--card-color: ${item.accentColor}`}
+            class={`stat-nav-card glass-card p-4 text-left bg-transparent transition-all w-full h-full ${
               props.activeView === item.view
-                ? "border-accent-cyan"
+                ? "stat-nav-active"
                 : "border-border-default"
             }`}
           >
@@ -100,6 +109,9 @@ export function StatsBar(props: StatsBarProps) {
               </span>
             </div>
             <div class={`text-xl font-bold ${item.color}`}>{item.value}</div>
+            <span class="stat-view-label absolute bottom-2 right-3 text-[9px] tracking-wider text-[rgba(17,24,39,0.3)] transition-colors whitespace-nowrap">
+              VIEW →
+            </span>
           </button>
         </Tooltip>
       ))}

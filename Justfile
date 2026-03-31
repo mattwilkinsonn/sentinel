@@ -63,10 +63,6 @@ backend-build:
 backend-run: db
     cd sentinel-backend && cargo watch -x run
 
-# Run backend with Discord bot enabled (watches for changes, starts Postgres if needed)
-backend-run-discord: db
-    cd sentinel-backend && cargo watch -x 'run --features discord'
-
 # === Frontend ===
 
 # Install frontend dependencies
@@ -197,3 +193,7 @@ dev-docker:
 
 # Alias for frontend dev.
 dev-frontend: frontend-dev
+
+dev-backend: backend-run
+
+backend-dev: backend-run

@@ -40,6 +40,8 @@ pub struct AggregateStats {
     pub kills_24h: u64,
     pub top_system: String,
     pub total_events: u64,
+    /// True when the event ring-buffer is full — the real 24h count may be higher.
+    pub events_at_cap: bool,
 }
 
 /// A single data store (profiles + events + names).
@@ -76,11 +78,12 @@ impl DataStore {
 impl DataStore {
     /// Prepend an event to the front of the ring-buffer and broadcast it over SSE.
     /// `new_character` events go into `new_pilot_events`; all others into `recent_events`.
-    /// Each deque is capped (1000 events / 500 pilots) to bound memory.
+    /// `recent_events` is capped at `cap`; `new_pilot_events` is capped at 500.
     pub fn push_event(
         &mut self,
         event: RawEvent,
         sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+        cap: usize,
     ) {
         if let Some(tx) = sse_tx {
             if let Ok(json) = serde_json::to_string(&event) {
@@ -94,7 +97,7 @@ impl DataStore {
             }
         } else {
             self.recent_events.push_front(event);
-            if self.recent_events.len() > 1000 {
+            if self.recent_events.len() > cap {
                 self.recent_events.pop_back();
             }
         }
@@ -102,8 +105,9 @@ impl DataStore {
 
     /// Compute aggregate dashboard stats from the current profile + event set.
     /// `total_events` counts only events from the last 24 hours.
+    /// `events_at_cap` is true when the ring-buffer is full (real count may be higher).
     /// `top_system` is the solar system ID or name where the most pilots were last seen.
-    pub fn compute_stats(&self) -> AggregateStats {
+    pub fn compute_stats(&self, cap: usize) -> AggregateStats {
         let total = self.profiles.len() as u64;
         let sum_score: u64 = self.profiles.values().map(|p| p.threat_score).sum();
         let avg = if total > 0 { sum_score / total } else { 0 };
@@ -156,6 +160,7 @@ impl DataStore {
             kills_24h,
             top_system,
             total_events: events_24h,
+            events_at_cap: self.recent_events.len() >= cap,
         }
     }
 }
@@ -188,6 +193,7 @@ mod tests {
                 data: serde_json::json!({}),
             },
             &no_sse,
+            1000,
         );
         store.push_event(
             RawEvent {
@@ -196,6 +202,7 @@ mod tests {
                 data: serde_json::json!({}),
             },
             &no_sse,
+            1000,
         );
 
         assert_eq!(store.recent_events.len(), 2);
@@ -204,10 +211,10 @@ mod tests {
     }
 
     #[test]
-    fn push_event_caps_at_1000() {
+    fn push_event_caps_at_configured_limit() {
         let mut store = DataStore::default();
         let no_sse: Option<tokio::sync::broadcast::Sender<String>> = None;
-        for i in 0..1200 {
+        for i in 0..1200u64 {
             store.push_event(
                 RawEvent {
                     event_type: "kill".into(),
@@ -215,6 +222,7 @@ mod tests {
                     data: serde_json::json!({}),
                 },
                 &no_sse,
+                1000,
             );
         }
         assert_eq!(store.recent_events.len(), 1000);
@@ -224,7 +232,7 @@ mod tests {
     #[test]
     fn compute_stats_empty() {
         let store = DataStore::default();
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.total_tracked, 0);
         assert_eq!(stats.avg_score, 0);
         assert_eq!(stats.kills_24h, 0);
@@ -248,7 +256,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.total_tracked, 2);
         assert_eq!(stats.avg_score, 5000);
     }
@@ -270,7 +278,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.kills_24h, 8);
     }
 
@@ -298,7 +306,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.top_system, "J-1042");
     }
 
@@ -319,7 +327,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let stats = store.compute_stats();
+        let stats = store.compute_stats(1000);
         assert_eq!(stats.top_system, "K-9731");
     }
 
@@ -348,6 +356,7 @@ mod tests {
                 data: serde_json::json!({"killer": 42}),
             },
             &sse,
+            1000,
         );
 
         let msg = rx.try_recv().unwrap();

@@ -55,6 +55,7 @@ const emptyStats: AggregateStats = {
   kills_24h: 0,
   top_system: "",
   total_events: 0,
+  events_at_cap: false,
 };
 
 /**
@@ -73,7 +74,7 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
   const [selectedCharacter, setSelectedCharacter] = createSignal<number | null>(
     null,
   );
-  const [subView, setSubView] = createSignal<SubView>("feed");
+  const [subView, setSubView] = createSignal<SubView>("leaderboard");
   const [loading, setLoading] = createSignal(true);
   const [contentHeight, setContentHeight] = createSignal(600);
   let contentRef: HTMLDivElement | undefined;
@@ -172,8 +173,14 @@ export function SentinelDashboard(props: { mode: "demo" | "live" }) {
     <div>
       {/* Hero */}
       <div class="scanline-overlay mb-8">
-        <h2 class="text-3xl tracking-wider mb-2">
-          SENTINEL <span class="text-accent-red">THREAT INTELLIGENCE</span>
+        <h2
+          class="text-4xl mb-1 text-accent-purple"
+          style="font-weight:900;letter-spacing:0.05em"
+        >
+          SENTINEL{" "}
+          <span style="color:#5b21b6;font-weight:700;font-size:0.7em">
+            THREAT INTELLIGENCE
+          </span>
         </h2>
         <p class="text-text-secondary text-sm">
           Real-time threat scoring via gRPC checkpoint streaming from Sui

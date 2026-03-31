@@ -4,6 +4,7 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::config::AppConfig;
 use crate::threat_engine;
 use crate::types::{AppState, RawEvent, ThreatProfile};
 
@@ -284,7 +285,7 @@ const SYSTEMS: &[&str] = &[
 
 /// Populate the demo DataStore with pre-defined pilot profiles covering all threat tiers.
 /// Called once at startup so the dashboard is immediately usable before historical data loads.
-pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
+pub async fn seed_demo_data(config: &AppConfig, state: Arc<RwLock<AppState>>) {
     tracing::info!(
         profile_count = DEMO_CHARACTERS.len(),
         "DEMO MODE — seeding {} threat profiles",
@@ -395,6 +396,7 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
                 data,
             },
             &sse,
+            config.max_recent_events,
         );
     }
 
@@ -409,6 +411,7 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
                 data: serde_json::json!({ "character_id": c.id }),
             },
             &sse,
+            config.max_recent_events,
         );
     }
 
@@ -428,7 +431,7 @@ pub async fn seed_demo_data(state: Arc<RwLock<AppState>>) {
 }
 
 /// Spawn a background loop that generates random events every 3-8 seconds.
-pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
+pub async fn demo_event_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
     tracing::info!("Demo event stream started");
     let mut rng = StdRng::from_os_rng();
     let mut last_event_type = "";
@@ -694,6 +697,7 @@ pub async fn demo_event_loop(state: Arc<RwLock<AppState>>) {
                 data,
             },
             &sse,
+            config.max_recent_events,
         );
     }
 }

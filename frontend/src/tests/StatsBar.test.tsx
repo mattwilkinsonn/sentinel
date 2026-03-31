@@ -11,6 +11,7 @@ describe("StatsBar", () => {
     kills_24h: 18,
     top_system: "J-1042",
     total_events: 7,
+    events_at_cap: false,
   };
 
   const mockProfiles: ThreatProfile[] = [

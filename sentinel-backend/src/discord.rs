@@ -222,6 +222,7 @@ fn alert_embed(event_type: &str, profile: &ThreatProfile, event_desc: &str) -> C
 }
 
 struct Handler {
+    config: AppConfig,
     state: Arc<RwLock<AppState>>,
     alert_channels: AlertChannels,
     db_pool: PgPool,
@@ -246,6 +247,10 @@ impl EventHandler for Handler {
                     .set_autocomplete(true),
                 ),
             CreateCommand::new("leaderboard").description("Show the top 10 most dangerous pilots"),
+            CreateCommand::new("kills").description("Recent kills feed"),
+            CreateCommand::new("systems").description("Most active solar systems right now"),
+            CreateCommand::new("events").description("Recent event feed (kills, jumps, bounties)"),
+            CreateCommand::new("stats").description("Aggregate threat network statistics"),
             CreateCommand::new("alerts")
                 .description("Configure CRITICAL threat alerts for this server")
                 .add_option(
@@ -308,17 +313,31 @@ impl Handler {
         let command_name = cmd.data.name.as_str();
         let guild_id = cmd.guild_id.map(|g| g.get());
         let user = cmd.user.name.as_str();
+        let arg = cmd.data.options.first().and_then(|o| match &o.value {
+            CommandDataOptionValue::String(s) => Some(s.as_str().to_string()),
+            CommandDataOptionValue::Integer(i) => Some(i.to_string()),
+            CommandDataOptionValue::SubCommand(_) => Some(o.name.clone()),
+            _ => None,
+        });
         tracing::debug!(
             command = command_name,
             guild_id,
             user,
-            "Discord command received"
+            arg = arg.as_deref(),
+            "/{command_name} from {user}{}",
+            arg.as_deref()
+                .map(|a| format!(" ({a})"))
+                .unwrap_or_default()
         );
         self.commands_run.fetch_add(1, Ordering::Relaxed);
 
         let result = match command_name {
             "threat" => self.cmd_threat(cmd).await,
             "leaderboard" => self.cmd_leaderboard().await,
+            "kills" => self.cmd_kills().await,
+            "systems" => self.cmd_systems().await,
+            "events" => self.cmd_events().await,
+            "stats" => self.cmd_stats().await,
             "alerts" => {
                 self.cmd_alerts(ctx, cmd).await;
                 return;
@@ -418,10 +437,284 @@ impl Handler {
         let state = self.state.read().await;
         let mut profiles: Vec<&ThreatProfile> = state.live.profiles.values().collect();
         profiles.sort_by(|a, b| b.threat_score.cmp(&a.threat_score));
-        let stats = state.live.compute_stats();
+        let stats = state.live.compute_stats(self.config.max_recent_events);
         Some(leaderboard_embed(&profiles, &stats))
     }
 
+    /// `/kills` — last 10 kills from DB with killer, victim, system, and time.
+    async fn cmd_kills(&self) -> Option<CreateEmbed> {
+        let kills = match crate::db::recent_kills(&self.db_pool, 10).await {
+            Ok(k) => k,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to query kills from DB");
+                return Some(
+                    CreateEmbed::new()
+                        .title("Recent Kills")
+                        .color(0xFF4444)
+                        .description("Failed to load kills."),
+                );
+            }
+        };
+
+        if kills.is_empty() {
+            return Some(
+                CreateEmbed::new()
+                    .title("Recent Kills")
+                    .color(0x808080)
+                    .description("No kills recorded yet."),
+            );
+        }
+
+        let state = self.state.read().await;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        let lines: String = kills
+            .iter()
+            .map(|e| {
+                let killer_id = e.data["killer_character_id"].as_u64().unwrap_or(0);
+                let victim_id = e.data["target_item_id"].as_u64().unwrap_or(0);
+                let system = e.data["solar_system_id"].as_str().unwrap_or("").to_string();
+                let killer_name = state
+                    .live
+                    .name_cache
+                    .get(&killer_id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("#{killer_id}"));
+                let victim_name = state
+                    .live
+                    .name_cache
+                    .get(&victim_id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("#{victim_id}"));
+                let system_name = state
+                    .live
+                    .system_name_cache
+                    .get(&system)
+                    .cloned()
+                    .unwrap_or(system);
+                let ago_secs = (now_ms.saturating_sub(e.timestamp_ms)) / 1000;
+                let ago = if ago_secs < 60 {
+                    format!("{ago_secs}s ago")
+                } else if ago_secs < 3600 {
+                    format!("{}m ago", ago_secs / 60)
+                } else {
+                    format!("{}h ago", ago_secs / 3600)
+                };
+                let emoji = if e.event_type == "structure_destroyed" {
+                    "💥"
+                } else {
+                    "☠️"
+                };
+                format!(
+                    "{emoji} **{killer_name}** killed **{victim_name}** in {system_name} — *{ago}*"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Some(
+            CreateEmbed::new()
+                .title("Recent Kills")
+                .color(0xFF4444)
+                .description(lines),
+        )
+    }
+
+    /// `/systems` — top 10 most active solar systems by pilot count.
+    async fn cmd_systems(&self) -> Option<CreateEmbed> {
+        let state = self.state.read().await;
+
+        let mut counts: std::collections::HashMap<&str, (u64, &str)> =
+            std::collections::HashMap::new();
+        for p in state.live.profiles.values() {
+            if p.last_seen_system.is_empty() {
+                continue;
+            }
+            let entry = counts
+                .entry(&p.last_seen_system)
+                .or_insert((0, &p.last_seen_system_name));
+            entry.0 += 1;
+        }
+
+        let mut systems: Vec<(&str, u64, &str)> = counts
+            .into_iter()
+            .map(|(id, (count, name))| (id, count, name))
+            .collect();
+        systems.sort_by(|a, b| b.1.cmp(&a.1));
+
+        if systems.is_empty() {
+            return Some(
+                CreateEmbed::new()
+                    .title("Active Systems")
+                    .color(0x808080)
+                    .description("No pilot location data yet."),
+            );
+        }
+
+        let lines: String = systems
+            .iter()
+            .take(10)
+            .enumerate()
+            .map(|(i, (id, count, name))| {
+                let display = if name.is_empty() { id } else { name };
+                let pilot_label = if *count == 1 { "pilot" } else { "pilots" };
+                format!("{}. **{display}** — {count} {pilot_label}", i + 1)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Some(
+            CreateEmbed::new()
+                .title("Most Active Systems")
+                .color(0x4488FF)
+                .description(lines),
+        )
+    }
+
+    /// `/events` — last 10 events of any type from the live feed.
+    async fn cmd_events(&self) -> Option<CreateEmbed> {
+        let state = self.state.read().await;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        let events: Vec<&crate::types::RawEvent> =
+            state.live.recent_events.iter().take(10).collect();
+
+        if events.is_empty() {
+            return Some(
+                CreateEmbed::new()
+                    .title("Live Event Feed")
+                    .color(0x808080)
+                    .description("No events recorded yet."),
+            );
+        }
+
+        let lines: String = events
+            .iter()
+            .map(|e| {
+                let ago_secs = (now_ms.saturating_sub(e.timestamp_ms)) / 1000;
+                let ago = if ago_secs < 60 {
+                    format!("{ago_secs}s ago")
+                } else if ago_secs < 3600 {
+                    format!("{}m ago", ago_secs / 60)
+                } else {
+                    format!("{}h ago", ago_secs / 3600)
+                };
+                let system_id = e
+                    .data
+                    .get("solar_system_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let system_name = if system_id.is_empty() {
+                    String::new()
+                } else {
+                    state
+                        .live
+                        .system_name_cache
+                        .get(system_id)
+                        .cloned()
+                        .unwrap_or_else(|| system_id.to_string())
+                };
+                match e.event_type.as_str() {
+                    "kill" | "structure_destroyed" => {
+                        let killer_id = e.data["killer_character_id"].as_u64().unwrap_or(0);
+                        let victim_id = e.data["target_item_id"].as_u64().unwrap_or(0);
+                        let killer = state.live.name_cache.get(&killer_id).cloned().unwrap_or_else(|| format!("#{killer_id}"));
+                        let victim = state.live.name_cache.get(&victim_id).cloned().unwrap_or_else(|| format!("#{victim_id}"));
+                        let emoji = if e.event_type == "structure_destroyed" { "💥" } else { "☠️" };
+                        if system_name.is_empty() {
+                            format!("{emoji} **{killer}** killed **{victim}** — *{ago}*")
+                        } else {
+                            format!("{emoji} **{killer}** killed **{victim}** in {system_name} — *{ago}*")
+                        }
+                    }
+                    "jump" => {
+                        let char_id = e.data["character_id"].as_u64().unwrap_or(0);
+                        let pilot = state.live.name_cache.get(&char_id).cloned().unwrap_or_else(|| format!("#{char_id}"));
+                        let dest = e.data["dest_gate"].as_str().unwrap_or("").to_string();
+                        if system_name.is_empty() {
+                            format!("🚀 **{pilot}** jumped — *{ago}*")
+                        } else if dest.is_empty() || dest == system_id {
+                            format!("🚀 **{pilot}** jumped to {system_name} — *{ago}*")
+                        } else {
+                            format!("🚀 **{pilot}** jumped to {system_name} via {dest} — *{ago}*")
+                        }
+                    }
+                    "bounty" => {
+                        let target_id = e.data["target_item_id"].as_u64().unwrap_or(0);
+                        let target = state.live.name_cache.get(&target_id).cloned().unwrap_or_else(|| format!("#{target_id}"));
+                        format!("💰 Bounty on **{target}** — *{ago}*")
+                    }
+                    _ => format!("• {} — *{ago}*", e.event_type),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Some(
+            CreateEmbed::new()
+                .title("Live Event Feed")
+                .color(0x44FF88)
+                .description(lines),
+        )
+    }
+
+    /// `/stats` — aggregate threat network statistics.
+    async fn cmd_stats(&self) -> Option<CreateEmbed> {
+        let state = self.state.read().await;
+        let stats = state.live.compute_stats(self.config.max_recent_events);
+
+        let critical = state
+            .live
+            .profiles
+            .values()
+            .filter(|p| threat_engine::threat_tier(p.threat_score) == "CRITICAL")
+            .count();
+        let high = state
+            .live
+            .profiles
+            .values()
+            .filter(|p| threat_engine::threat_tier(p.threat_score) == "HIGH")
+            .count();
+        let active = state
+            .live
+            .profiles
+            .values()
+            .filter(|p| p.kill_count > 0 || p.death_count > 0)
+            .count();
+
+        let top_system = if stats.top_system.is_empty() {
+            "Unknown".to_string()
+        } else {
+            stats.top_system.clone()
+        };
+
+        Some(
+            CreateEmbed::new()
+                .title("SENTINEL Network Stats")
+                .color(0xFF8C00)
+                .field("Tracked Pilots", stats.total_tracked.to_string(), true)
+                .field("Active Pilots", active.to_string(), true)
+                .field(
+                    "Avg Threat Score",
+                    format!("{:.2}", stats.avg_score as f64 / 100.0),
+                    true,
+                )
+                .field("Kills (24h)", stats.kills_24h.to_string(), true)
+                .field("Events (24h)", stats.total_events.to_string(), true)
+                .field("Hottest System", top_system, true)
+                .field(
+                    "By Tier",
+                    format!("🔴 CRITICAL: {critical}\n🟠 HIGH: {high}"),
+                    false,
+                ),
+        )
+    }
     /// `/alerts set|clear|status` — manage the guild's CRITICAL alert channel.
     /// Requires MANAGE_CHANNELS permission. Config is persisted to Postgres.
     async fn cmd_alerts(&self, ctx: &serenity::all::Context, cmd: &CommandInteraction) {
@@ -733,6 +1026,7 @@ pub async fn run_discord_bot(
     let intents = GatewayIntents::empty();
 
     let handler = Handler {
+        config: config.clone(),
         state: state.clone(),
         alert_channels: alert_channels.clone(),
         db_pool,

@@ -60,6 +60,8 @@ export type AggregateStats = {
   top_system: string;
   /** Total events ingested in the last 24 hours (all types combined). */
   total_events: number;
+  /** True when the event buffer is full — the real count may be higher. */
+  events_at_cap: boolean;
 };
 
 /**

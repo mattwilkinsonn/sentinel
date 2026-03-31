@@ -54,8 +54,8 @@ pub struct AppConfig {
     pub log_format: LogFormat,
     /// Discord bot token (DISCORD_TOKEN env var)
     pub discord_token: String,
-    /// Max unresolved names (warm restart) before skipping the GraphQL full scan
-    pub graphql_name_scan_threshold: usize,
+    /// Maximum events retained in the in-memory ring-buffer (MAX_RECENT_EVENTS)
+    pub max_recent_events: usize,
 }
 
 fn require(name: &str) -> String {
@@ -93,9 +93,9 @@ impl AppConfig {
                 .parse()
                 .expect("LOG_FORMAT must be 'json' or 'pretty'"),
             discord_token: require("DISCORD_TOKEN"),
-            graphql_name_scan_threshold: require("GRAPHQL_NAME_SCAN_THRESHOLD")
+            max_recent_events: require("MAX_RECENT_EVENTS")
                 .parse()
-                .expect("GRAPHQL_NAME_SCAN_THRESHOLD must be a number"),
+                .expect("MAX_RECENT_EVENTS must be a number"),
         })
     }
 }

@@ -32,7 +32,7 @@ fn testnet_config() -> AppConfig {
         crates_log_level: tracing::Level::WARN,
         log_format: LogFormat::Pretty,
         discord_token: "unused".into(),
-        graphql_name_scan_threshold: 50,
+        max_recent_events: 1000,
     }
 }
 

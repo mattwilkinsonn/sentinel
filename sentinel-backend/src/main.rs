@@ -117,6 +117,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut s = state.write().await;
         db::load_into(&db_pool, &mut s.live).await?;
         let name_count = db::load_character_names(&db_pool, &mut s.live).await?;
+        // Backfill profile names into name_cache for any entries that predate
+        // the character_name_cache table (profile.name is the authoritative source).
+        let backfill: Vec<(u64, String)> = s
+            .live
+            .profiles
+            .iter()
+            .filter_map(|(id, p)| p.name.as_ref().map(|n| (*id, n.clone())))
+            .collect();
+        for (id, name) in backfill {
+            s.live.name_cache.entry(id).or_insert(name);
+        }
         let gate_count = db::load_gate_names(&db_pool, &mut s.live).await?;
         let struct_count = db::load_structure_types(&db_pool, &mut s.live).await?;
         tracing::info!(
@@ -133,12 +144,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Seed demo data immediately (so dashboard is usable while historical loads)
-    demo::seed_demo_data(state.clone()).await;
+    demo::seed_demo_data(&config, state.clone()).await;
 
     // Demo event loop (always running)
     let demo_state = state.clone();
+    let demo_config = config.clone();
     tokio::spawn(async move {
-        demo::demo_event_loop(demo_state).await;
+        demo::demo_event_loop(demo_config, demo_state).await;
     });
 
     // Load historical data in background (API serves demo data immediately)
@@ -191,13 +203,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let meta_client = world_client.clone();
     let meta_pool = db_pool.clone();
     let api_port = config.api_port;
+    let meta_config = config.clone();
     tokio::spawn(async move {
         world_api::metadata_resolver_loop(
             meta_client,
             meta_state,
             meta_pool,
-            config.sui_grpc_url.clone(),
-            config.world_package_id.clone(),
+            meta_config.sui_grpc_url.clone(),
+            meta_config.world_package_id.clone(),
         )
         .await;
     });
@@ -217,7 +230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // HTTP API + SSE
-    let app = api::router(state.clone(), sse_tx);
+    let app = api::router(config, state.clone(), sse_tx);
 
     let addr = format!("0.0.0.0:{api_port}");
     tracing::info!(addr, "API listening on {addr}");

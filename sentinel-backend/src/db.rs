@@ -143,6 +143,26 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
     Ok(())
 }
 
+/// Fetch the most recent kill/structure_destroyed events from DB.
+pub async fn recent_kills(pool: &PgPool, limit: i64) -> Result<Vec<RawEvent>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, EventRow>(
+        "SELECT event_type, timestamp_ms, data FROM raw_events \
+         WHERE event_type IN ('kill', 'structure_destroyed') \
+         ORDER BY timestamp_ms DESC LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| RawEvent {
+            event_type: r.event_type,
+            timestamp_ms: r.timestamp_ms as u64,
+            data: r.data,
+        })
+        .collect())
+}
+
 /// Insert a raw event.
 pub async fn insert_event(pool: &PgPool, e: &RawEvent) -> Result<(), sqlx::Error> {
     sqlx::query("INSERT INTO raw_events (event_type, timestamp_ms, data) VALUES ($1, $2, $3)")

@@ -62,8 +62,8 @@ const eventConfig: Record<string, EventDisplay> = {
   },
   jump: {
     icon: Navigation,
-    color: "text-accent-purple",
-    borderColor: "var(--color-accent-purple)",
+    color: "text-accent-indigo",
+    borderColor: "var(--color-accent-indigo)",
     format: (d, l) =>
       d.source_gate && d.dest_gate
         ? `${l.n(d.character_id)} jumped ${d.source_gate} → ${d.dest_gate}`
@@ -279,11 +279,19 @@ export function FeedView(props: FeedViewProps) {
             const shown = filter()
               ? filteredEvents().length
               : props.events.length;
-            const label = filter()
-              ? `${shown} ${filter()?.replace("_", " ")}`
-              : `${shown} total`;
+            const filterItem = EVENT_ORDER.find((e) => e.key === filter());
+            const noun = filterItem
+              ? shown === 1
+                ? filterItem.singular
+                : filterItem.plural
+              : "total";
+            const label = `${shown} ${noun}`;
             return `${label} · ${recent} last 24h`;
           })()}
+        </span>
+        <span class="text-text-muted text-sm">·</span>
+        <span class="text-[10px] tracking-wider text-[rgba(17,24,39,0.35)]">
+          CLICK A CARD TO FILTER BY TYPE
         </span>
       </h3>
 
@@ -302,10 +310,10 @@ export function FeedView(props: FeedViewProps) {
               <button
                 type="button"
                 onClick={() => setFilter(isActive() ? null : item.key)}
-                class={`glass-card p-2 flex flex-col items-center justify-center gap-1 bg-transparent transition-all w-full ${
-                  isActive() ? "border-accent-cyan" : "border-border-default"
+                style={`height:6.5rem; --card-color: ${config.borderColor}`}
+                class={`stat-nav-card glass-card p-2 flex flex-col items-center justify-center gap-1 bg-transparent transition-all w-full ${
+                  isActive() ? "stat-nav-active" : "border-border-default"
                 }`}
-                style="height:6.5rem"
               >
                 <Dynamic
                   component={config.icon}

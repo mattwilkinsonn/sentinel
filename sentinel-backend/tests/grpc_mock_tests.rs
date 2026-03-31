@@ -456,7 +456,7 @@ async fn process_checkpoint_events_handles_killmail() {
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
-        graphql_name_scan_threshold: 50,
+        max_recent_events: 1000,
     };
 
     let kill_event_json = serde_json::json!({
@@ -532,7 +532,7 @@ async fn process_checkpoint_events_handles_character_created() {
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
-        graphql_name_scan_threshold: 50,
+        max_recent_events: 1000,
     };
 
     let event_json = serde_json::json!({
@@ -600,7 +600,7 @@ async fn process_checkpoint_events_filters_wrong_package() {
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
-        graphql_name_scan_threshold: 50,
+        max_recent_events: 1000,
     };
 
     let checkpoint = sui_rpc::Checkpoint {
@@ -650,7 +650,7 @@ async fn checkpoint_replay_processes_events_across_checkpoints() {
         crates_log_level: tracing::Level::WARN,
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
-        graphql_name_scan_threshold: 50,
+        max_recent_events: 1000,
     };
 
     // Create 3 checkpoints with events

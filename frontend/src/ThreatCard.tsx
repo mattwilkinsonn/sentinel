@@ -85,7 +85,7 @@ export function ThreatCard(props: ThreatCardProps) {
       </div>
 
       {/* Score bar */}
-      <div style="height:10px;border-radius:5px;background:rgba(250,250,229,0.08);overflow:hidden;margin-bottom:1rem">
+      <div style="height:10px;border-radius:5px;background:rgba(17,24,39,0.08);overflow:hidden;margin-bottom:1rem">
         <div
           style={`width:${props.profile.threat_score / 100}%;height:10px;border-radius:5px;background:${color()}`}
         />

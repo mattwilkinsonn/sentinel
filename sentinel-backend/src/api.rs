@@ -17,6 +17,7 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 use tower_http::cors::CorsLayer;
 
+use crate::config::AppConfig;
 use crate::threat_engine;
 use crate::types::AppState;
 
@@ -24,17 +25,26 @@ type SharedState = Arc<RwLock<AppState>>;
 
 /// Build the Axum router. Mounts `/api/data`, `/api/events/stream`, and `/api/health`.
 /// CORS is permissive — the frontend and backend run on different origins in all environments.
-pub fn router(state: SharedState, sse_tx: tokio::sync::broadcast::Sender<String>) -> Router {
+pub fn router(
+    config: AppConfig,
+    state: SharedState,
+    sse_tx: tokio::sync::broadcast::Sender<String>,
+) -> Router {
     Router::new()
         .route("/api/data", get(get_combined_data))
         .route("/api/events/stream", get(sse_stream))
         .route("/api/health", get(health))
         .layer(CorsLayer::permissive())
-        .with_state(AppRouterState { state, sse_tx })
+        .with_state(AppRouterState {
+            config,
+            state,
+            sse_tx,
+        })
 }
 
 #[derive(Clone)]
 struct AppRouterState {
+    config: AppConfig,
     state: SharedState,
     sse_tx: tokio::sync::broadcast::Sender<String>,
 }
@@ -65,24 +75,22 @@ async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoRespon
     let live_events: Vec<_> = state.live.recent_events.iter().cloned().collect();
     let live_new_pilots: Vec<_> = state.live.new_pilot_events.iter().cloned().collect();
 
-    // Name + system lookup maps for the frontend
+    // Name lookup map for the frontend — use the full name_cache (live + demo) so
+    // kill victims and other non-tracked participants resolve correctly.
+    // Filter out "" entries (permanently-unresolvable chars marked during scan).
     let name_map: std::collections::HashMap<u64, &str> = state
         .live
-        .profiles
-        .values()
-        .filter_map(|p| p.name.as_deref().map(|n| (p.character_item_id, n)))
-        .chain(
-            state
-                .demo
-                .profiles
-                .values()
-                .filter_map(|p| p.name.as_deref().map(|n| (p.character_item_id, n))),
-        )
+        .name_cache
+        .iter()
+        .chain(state.demo.name_cache.iter())
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(k, v)| (*k, v.as_str()))
         .collect();
 
     let system_map = &state.live.system_name_cache;
 
-    let mut live_stats = state.live.compute_stats();
+    let cap = app.config.max_recent_events;
+    let mut live_stats = state.live.compute_stats(cap);
     // Resolve top system name from cache
     if !live_stats.top_system.is_empty() {
         if let Some(name) = system_map.get(&live_stats.top_system) {
@@ -97,7 +105,7 @@ async fn get_combined_data(State(app): State<AppRouterState>) -> impl IntoRespon
             "threats": demo_profiles,
             "events": demo_events,
             "new_pilots": demo_new_pilots,
-            "stats": state.demo.compute_stats(),
+            "stats": state.demo.compute_stats(cap),
         },
         "live": {
             "threats": live_profiles,
@@ -137,10 +145,33 @@ async fn health(State(app): State<AppRouterState>) -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::LogFormat;
     use crate::types::{AppState, RawEvent, ThreatProfile};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
+
+    fn test_config() -> AppConfig {
+        AppConfig {
+            sui_grpc_url: "http://unused".into(),
+            sui_graphql_url: "http://unused".into(),
+            sentinel_package_id: "0x0".into(),
+            threat_registry_id: "0x0".into(),
+            publisher_private_key: "unused".into(),
+            world_package_id: "0x0".into(),
+            bounty_board_package_id: "0x0".into(),
+            publish_interval_ms: 60000,
+            publish_score_threshold_bp: 500,
+            api_port: 3001,
+            database_url: "unused".into(),
+            world_api_url: "http://unused".into(),
+            sentinel_log_level: tracing::Level::INFO,
+            crates_log_level: tracing::Level::WARN,
+            log_format: LogFormat::Pretty,
+            discord_token: "unused".into(),
+            max_recent_events: 1000,
+        }
+    }
 
     fn test_app() -> (Router, tokio::sync::broadcast::Sender<String>) {
         let (sse_tx, _) = tokio::sync::broadcast::channel::<String>(16);
@@ -148,7 +179,7 @@ mod tests {
             sse_tx: Some(sse_tx.clone()),
             ..Default::default()
         }));
-        (router(state, sse_tx.clone()), sse_tx)
+        (router(test_config(), state, sse_tx.clone()), sse_tx)
     }
 
     fn test_app_with_data() -> (Router, tokio::sync::broadcast::Sender<String>) {
@@ -185,10 +216,11 @@ mod tests {
                 data: serde_json::json!({}),
             },
             &sse,
+            1000,
         );
 
         let shared = Arc::new(RwLock::new(state));
-        (router(shared, sse_tx.clone()), sse_tx)
+        (router(test_config(), shared, sse_tx.clone()), sse_tx)
     }
 
     #[tokio::test]
@@ -300,7 +332,7 @@ mod tests {
         );
 
         let shared = Arc::new(RwLock::new(state));
-        let app = router(shared, sse_tx.clone());
+        let app = router(test_config(), shared, sse_tx.clone());
 
         let resp = app
             .oneshot(Request::get("/api/data").body(Body::empty()).unwrap())

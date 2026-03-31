@@ -4,67 +4,36 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Critical (must do)
 
-- [x] ~~Fix SST deploy~~ — NEON_ORG_ID, historyRetention,
-      Cloudflare DNS, ARM containers on GHCR
-- [x] ~~Complete on-chain publisher~~ — sig format fixed, shared
-      object version fixed, InsufficientGas fixed (0.5 SUI budget)
-- [x] ~~Verify live events flowing~~ — gRPC stream connected,
-      Stillness world package ID confirmed
-- [x] ~~Debug unresolved character names~~ — all 5111 names now
-      resolved from DB cache on startup; 0 unresolved confirmed in logs.
-- [x] ~~Verify publisher succeeds~~ — working.
-- [x] ~~Published score persistence~~ — fixed: mark dirty after
-      publish so DB sync flushes published_score. Previously
-      published_score was updated in-memory but never written to DB.
-      Published 78 profiles across
-      InsufficientGas, now increased budget + smaller batches.
-      Need to confirm `Published X threat scores — tx: <digest>`.
-- [x] **Deploy to production** — using `sst.aws.StaticSite` with
-      `sst.cloudflare.dns()`. ALB health check configured for
-      `/api/health`. Public chain IDs in `CHAIN_IDS` config.
+- [ ] **Bounty board wallet connection + post UI** — wire up wallet
+      connection (deps already installed: `@mysten/wallet-standard`).
+      Add post-bounty form to the frontend — port from `dapps/src/PostBountyForm.tsx`
+      which already has the full transaction code. Required before any
+      real bounties can be posted by players on Stillness.
+- [ ] **Bounty board claim UI** — add claim button to bounty cards.
+      Port from `dapps/src/BountyBoard.tsx` claim logic. Requires wallet
+      connection above.
+- [ ] **Emit score_change events in live mode** — currently only generated
+      in demo. Push a `score_change` event to `recent_events` when a
+      profile's threat score is recalculated (in `finalize` or live scoring).
+- [ ] **Get live on Stillness** — we receive Stillness events but have no
+      real bounties. Need at least a few real bounty transactions on-chain
+      so the demo shows actual data, not just kills/jumps. Critical for
+      "Best Live Frontier Integration" bonus prize and the Stillness
+      Deployment bonus criterion. Use CLI scripts in `ts-scripts/bounty_board/`
+      to seed manually if UI isn't ready in time.
 - [ ] **Submit on Deepsurge** — register, submit repo link + materials
 
 ## High priority
 
-- [x] ~~Frontend: show new fields~~ — titles, system names, tribe
-      names, threat tiers all displaying
-- [x] ~~Earned titles~~ — 14 title types computed from profile stats
-- [x] ~~Historical data loading~~ — killmails, character names,
-      jump events, character creation events from GraphQL
-- [x] ~~New Pilots view~~ — separate page with 24h count
-- [x] ~~Feed improvements~~ — separate gameplay/new_pilot events,
-      gate names resolved, Smart Gate jump labels
-- [x] ~~Character name DB caching~~ — 4800+ names cached in Postgres,
-      loaded instantly on restart
-- [x] ~~Live name resolution~~ — metadata resolver fetches names
-      for new characters via GraphQL every 10s
-- [x] ~~Migrate publisher to gRPC~~ — publisher, historical loader,
-      and world_api all migrated to gRPC v2. GraphQL retained for
-      cold-start indexed queries. Removed `sui-graphql-client` dep.
-      Added `sui_client.rs` shared utilities, 28 mock tests,
-      11 live testnet integration tests.
-- [ ] **Add Claude development section to README** — document AI-assisted
-      development process with example prompts showing human direction
-      of architecture, design decisions, and technical corrections.
-- [ ] **Discord bot** — Rust module in sentinel-backend (serenity,
-      feature-gated). Reads shared AppState directly, SSE alerts.
-      MVP commands: `/threat <pilot>`, `/leaderboard`, `/alerts`.
-      Future commands: `/search <name>`, `/kills` (recent kills feed),
-      `/systems` (active systems), `/events` (live event feed),
-      `/stats` (aggregate dashboard stats), `/pilot <id>` (by ID).
-      ~2 hours. Judges love seeing integrations.
 - [ ] **Demo video** — clear walkthrough: live events flowing,
       scoring, dashboard, threat tiers, titles, on-chain registry,
       gate blocking. Directly affects "Visual Presentation" criterion.
-- [ ] Events 24H shows 1000 events max. Increase max and show + if we're
-      at the cap. Doesn't need to show how many actual events the frontend has.
 
 ## Medium priority
 
-- [ ] **Dashboard card navigation UX** — the stat cards at the top of
-      the dashboard are clickable to switch views, but this isn't
-      obvious. Add hover states, cursor pointer, subtle arrow/icon,
-      or "click to view" tooltip to make it discoverable.
+- [ ] **Clarify TRACKED stat** — tooltip or subtitle explaining "pilots
+      observed in on-chain events" vs total registered characters (~5100).
+      e.g. "3717 pilots observed in combat / gate / bounty events".
 - [ ] **Time filters** — reusable dropdown component for 1h/24h/7d/all.
       Wire into: events feed, systems view, tracked pilots, kills view.
       Custom date range picker as stretch goal.
@@ -142,3 +111,50 @@ Deadline: March 31, 2026 23:59 UTC
 - Gate objects have `metadata.name` but no solar system ID
 - Publisher wallet: ~0.89 SUI testnet balance
 - Shared objects need `initial_shared_version`, not current version
+
+## Completed
+
+- [x] **Dashboard card navigation UX** — the stat cards at the top of
+      the dashboard are clickable to switch views, but this isn't
+      obvious. Add hover states, cursor pointer, subtle arrow/icon,
+      or "click to view" tooltip to make it discoverable.
+- [x] ~~Fix SST deploy~~ — NEON_ORG_ID, historyRetention,
+      Cloudflare DNS, ARM containers on GHCR
+- [x] ~~Complete on-chain publisher~~ — sig format fixed, shared
+      object version fixed, InsufficientGas fixed (0.5 SUI budget)
+- [x] ~~Verify live events flowing~~ — gRPC stream connected,
+      Stillness world package ID confirmed
+- [x] ~~Debug unresolved character names~~ — all 5111 names now
+      resolved from DB cache on startup; 0 unresolved confirmed in logs.
+- [x] ~~Verify publisher succeeds~~ — working.
+- [x] ~~Published score persistence~~ — fixed: mark dirty after
+      publish so DB sync flushes published_score.
+- [x] ~~Deploy to production~~ — using `sst.aws.StaticSite` with
+      `sst.cloudflare.dns()`. ALB health check configured for
+      `/api/health`. Public chain IDs in `CHAIN_IDS` config.
+- [x] ~~Restore dashboard as default view~~ — leaderboard is default;
+      ACTIVE THREATS card is leftmost; feed accessible via StatsBar/sidebar.
+- [x] ~~Frontend: show new fields~~ — titles, system names, tribe
+      names, threat tiers all displaying
+- [x] ~~Earned titles~~ — 14 title types computed from profile stats
+- [x] ~~Historical data loading~~ — killmails, character names,
+      jump events, character creation events from GraphQL
+- [x] ~~New Pilots view~~ — separate page with 24h count
+- [x] ~~Feed improvements~~ — separate gameplay/new_pilot events,
+      gate names resolved, Smart Gate jump labels
+- [x] ~~Character name DB caching~~ — 4800+ names cached in Postgres,
+      loaded instantly on restart
+- [x] ~~Live name resolution~~ — metadata resolver fetches names
+      for new characters via GraphQL every 10s
+- [x] ~~Migrate publisher to gRPC~~ — publisher, historical loader,
+      and world_api all migrated to gRPC v2. GraphQL retained for
+      cold-start indexed queries. Removed `sui-graphql-client` dep.
+      Added `sui_client.rs` shared utilities, 28 mock tests,
+      11 live testnet integration tests.
+- [x] ~~Add Claude development section to README~~ — documented
+      AI-assisted development process with example prompts.
+- [x] ~~Discord bot~~ — serenity, always compiled. Slash commands:
+      `/threat`, `/leaderboard`, `/alerts`, `/kills`, `/systems`,
+      `/events`, `/stats`, `/pilot <id>`. SSE-driven CRITICAL alerts.
+      DISCORD_TOKEN required at startup.
+- [x] ~~Events 24H cap~~ — MAX_RECENT_EVENTS=5000, shows "+" when at cap.

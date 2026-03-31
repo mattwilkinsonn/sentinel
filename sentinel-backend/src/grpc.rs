@@ -181,15 +181,39 @@ async fn process_checkpoint(
             if event_type.contains("KillMailCreatedEvent")
                 || event_type.contains("KillmailCreatedEvent")
             {
-                handle_killmail(store, &sse_tx, &json_value, timestamp_ms);
+                handle_killmail(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyPostedEvent") {
-                handle_bounty_posted(store, &sse_tx, &json_value, timestamp_ms);
+                handle_bounty_posted(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyCancelledEvent")
                 || event_type.contains("ContributionWithdrawnEvent")
             {
-                handle_bounty_removed(store, &sse_tx, &json_value, timestamp_ms);
+                handle_bounty_removed(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("JumpEvent") {
-                handle_jump(store, &sse_tx, &json_value, timestamp_ms);
+                handle_jump(
+                    store,
+                    &sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             }
 
             tracing::info!(
@@ -296,17 +320,47 @@ pub fn process_checkpoint_events(
             if event_type.contains("KillMailCreatedEvent")
                 || event_type.contains("KillmailCreatedEvent")
             {
-                handle_killmail(store, sse_tx, &json_value, timestamp_ms);
+                handle_killmail(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyPostedEvent") {
-                handle_bounty_posted(store, sse_tx, &json_value, timestamp_ms);
+                handle_bounty_posted(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("BountyCancelledEvent")
                 || event_type.contains("ContributionWithdrawnEvent")
             {
-                handle_bounty_removed(store, sse_tx, &json_value, timestamp_ms);
+                handle_bounty_removed(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("JumpEvent") {
-                handle_jump(store, sse_tx, &json_value, timestamp_ms);
+                handle_jump(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             } else if event_type.contains("CharacterCreatedEvent") {
-                handle_character_created(store, sse_tx, &json_value, timestamp_ms);
+                handle_character_created(
+                    store,
+                    sse_tx,
+                    &json_value,
+                    timestamp_ms,
+                    config.max_recent_events,
+                );
             }
         }
     }
@@ -320,6 +374,7 @@ fn handle_killmail(
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     // Extract killer and victim character IDs (nested: {"item_id": "123", "tenant": "..."})
     let killer_id = json_item_id(json, "killer_id")
@@ -414,6 +469,7 @@ fn handle_killmail(
             data,
         },
         sse_tx,
+        cap,
     );
 }
 
@@ -423,6 +479,7 @@ fn handle_bounty_posted(
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let target_id = json_item_id(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
 
@@ -451,6 +508,7 @@ fn handle_bounty_posted(
             }),
         },
         sse_tx,
+        cap,
     );
 }
 
@@ -461,6 +519,7 @@ fn handle_bounty_removed(
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let target_id = json_item_id(json, "target_item_id").or_else(|| json_u64(json, "targetItemId"));
 
@@ -481,6 +540,7 @@ fn handle_bounty_removed(
             }),
         },
         sse_tx,
+        cap,
     );
 }
 
@@ -491,6 +551,7 @@ fn handle_jump(
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let character_id = json_item_id(json, "character_id")
         .or_else(|| json_item_id(json, "character_key"))
@@ -555,6 +616,7 @@ fn handle_jump(
             }),
         },
         sse_tx,
+        cap,
     );
 }
 
@@ -565,6 +627,7 @@ fn handle_character_created(
     sse_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     json: &serde_json::Value,
     timestamp_ms: u64,
+    cap: usize,
 ) {
     let char_id = json_item_id(json, "key")
         .or_else(|| json_item_id(json, "character_id"))
@@ -584,6 +647,7 @@ fn handle_character_created(
                 data: serde_json::json!({ "character_id": id }),
             },
             sse_tx,
+            cap,
         );
     }
 }
@@ -690,7 +754,7 @@ mod tests {
             "solar_system_id": "J-1042"
         });
 
-        handle_killmail(&mut store, &no_sse(), &json, 1000);
+        handle_killmail(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.len(), 2);
 
@@ -727,7 +791,7 @@ mod tests {
             "victim_character_id": 200,
             "solar_system_id": "X-4419"
         });
-        handle_killmail(&mut store, &no_sse(), &json, 2000);
+        handle_killmail(&mut store, &no_sse(), &json, 2000, 1000);
 
         let killer = store.profiles.get(&100).unwrap();
         assert_eq!(killer.kill_count, 6);
@@ -741,7 +805,7 @@ mod tests {
             "killer_character_id": 100,
             "victim_character_id": 200,
         });
-        handle_killmail(&mut store, &no_sse(), &json, 1000);
+        handle_killmail(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.recent_events.len(), 1);
         assert_eq!(store.recent_events[0].event_type, "kill");
@@ -755,7 +819,7 @@ mod tests {
             "victimId": 400,
             "solarSystemId": "Z-0091"
         });
-        handle_killmail(&mut store, &no_sse(), &json, 1000);
+        handle_killmail(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert!(store.profiles.contains_key(&300));
         assert!(store.profiles.contains_key(&400));
@@ -769,7 +833,7 @@ mod tests {
         let mut store = empty_store();
         let json = serde_json::json!({ "target_item_id": 100 });
 
-        handle_bounty_posted(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_posted(&mut store, &no_sse(), &json, 1000, 1000);
 
         let profile = store.profiles.get(&100).unwrap();
         assert_eq!(profile.bounty_count, 1);
@@ -782,8 +846,8 @@ mod tests {
         let mut store = empty_store();
         let json = serde_json::json!({ "target_item_id": 100 });
 
-        handle_bounty_posted(&mut store, &no_sse(), &json, 1000);
-        handle_bounty_posted(&mut store, &no_sse(), &json, 2000);
+        handle_bounty_posted(&mut store, &no_sse(), &json, 1000, 1000);
+        handle_bounty_posted(&mut store, &no_sse(), &json, 2000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().bounty_count, 2);
     }
@@ -803,7 +867,7 @@ mod tests {
         );
 
         let json = serde_json::json!({ "target_item_id": 100 });
-        handle_bounty_removed(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_removed(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().bounty_count, 2);
         assert_eq!(store.recent_events[0].event_type, "bounty_removed");
@@ -822,7 +886,7 @@ mod tests {
         );
 
         let json = serde_json::json!({ "target_item_id": 100 });
-        handle_bounty_removed(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_removed(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().bounty_count, 0);
     }
@@ -831,7 +895,7 @@ mod tests {
     fn bounty_removed_ignores_unknown_character() {
         let mut store = empty_store();
         let json = serde_json::json!({ "target_item_id": 999 });
-        handle_bounty_removed(&mut store, &no_sse(), &json, 1000);
+        handle_bounty_removed(&mut store, &no_sse(), &json, 1000, 1000);
 
         // No profile created — only existing profiles are modified
         assert!(!store.profiles.contains_key(&999));
@@ -849,7 +913,7 @@ mod tests {
             "solar_system_id": "K-9731"
         });
 
-        handle_jump(&mut store, &no_sse(), &json, 1000);
+        handle_jump(&mut store, &no_sse(), &json, 1000, 1000);
 
         let profile = store.profiles.get(&100).unwrap();
         assert_eq!(profile.last_seen_system, "K-9731");
@@ -875,7 +939,7 @@ mod tests {
             "character_id": 100,
             "solar_system_id": "K-9731"
         });
-        handle_jump(&mut store, &no_sse(), &json, 1000);
+        handle_jump(&mut store, &no_sse(), &json, 1000, 1000);
 
         assert_eq!(store.profiles.get(&100).unwrap().systems_visited, 3);
     }
@@ -897,7 +961,7 @@ mod tests {
             "character_id": 100,
             "solar_system_id": "X-4419"
         });
-        handle_jump(&mut store, &no_sse(), &json, 1000);
+        handle_jump(&mut store, &no_sse(), &json, 1000, 1000);
 
         let profile = store.profiles.get(&100).unwrap();
         assert_eq!(profile.systems_visited, 4);
