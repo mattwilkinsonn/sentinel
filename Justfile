@@ -129,8 +129,17 @@ check-move:
 
 # === Full Stack ===
 
+# Clone Sui gRPC proto definitions (required for backend build)
+protos-install:
+    mkdir -p sentinel-backend/proto
+    @if [ -d "sentinel-backend/proto/sui-apis" ]; then \
+        echo "sui-apis already cloned, skipping"; \
+    else \
+        git clone --depth 1 https://github.com/MystenLabs/sui-apis.git sentinel-backend/proto/sui-apis; \
+    fi
+
 # Install all dependencies
-install: frontend-install scripts-install
+install: frontend-install scripts-install protos-install
 
 # Run all tests
 test: backend-test frontend-test contracts-test
