@@ -588,6 +588,22 @@ pub async fn load_character_names_graphql(
         return Ok(0);
     }
 
+    // Skip the expensive full scan if this looks like a warm restart: most names are
+    // already in the cache and only a handful are missing. On a cold start all profiles
+    // are unresolved (unresolved == total_profiles), so the condition won't trigger.
+    let threshold = config.graphql_name_scan_threshold;
+    let resolved = total_profiles - unresolved;
+    if unresolved <= threshold && resolved > 0 {
+        tracing::info!(
+            unresolved,
+            resolved,
+            total_profiles,
+            threshold,
+            "Skipping GraphQL name scan — warm restart, deferring stragglers to gRPC batch"
+        );
+        return Ok(0);
+    }
+
     tracing::info!(
         unresolved,
         total_profiles,

@@ -139,10 +139,18 @@ check-move:
 # Install all dependencies
 install: frontend-install scripts-install
 
-# Run all tests
-test: backend-test frontend-test contracts-test
+# Run all tests in parallel with mprocs (each suite in its own pane)
+test:
+    mprocs \
+      --names "unit,integration,live,frontend,contracts" \
+      "just backend-test" \
+      "just backend-test-integration" \
+      "just backend-test-live" \
+      "just frontend-test" \
+      "just contracts-test"
 
-# Build everything
+# Build everything (parallel)
+[parallel]
 build: contracts-build backend-build frontend-build
 
 # === Deploy ===

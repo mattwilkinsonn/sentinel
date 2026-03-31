@@ -64,6 +64,7 @@ fn test_config() -> AppConfig {
         crates_log_level: tracing::Level::WARN,
         log_format: LogFormat::Json,
         discord_token: "test-token".into(),
+        graphql_name_scan_threshold: 50,
     }
 }
 

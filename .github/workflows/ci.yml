@@ -59,10 +59,12 @@ jobs:
       BUILDER_PACKAGE_ID: "0x0000000000000000000000000000000000000000000000000000000000000000"
       SENTINEL_PUBLISH_INTERVAL_MS: "60000"
       SENTINEL_PUBLISH_THRESHOLD_BP: "500"
+      GRAPHQL_NAME_SCAN_THRESHOLD: "50"
       SENTINEL_API_PORT: "3001"
       WORLD_API_URL: "https://stillness-world-api.live.tech.evefrontier.com"
       SENTINEL_LOG_LEVEL: "info"
       CRATES_LOG_LEVEL: "warn"
+      DISCORD_TOKEN: "unused"
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -161,6 +163,7 @@ jobs:
             -e BUILDER_PACKAGE_ID \
             -e SENTINEL_PUBLISH_INTERVAL_MS \
             -e SENTINEL_PUBLISH_THRESHOLD_BP \
+            -e GRAPHQL_NAME_SCAN_THRESHOLD \
             -e SENTINEL_API_PORT \
             -e WORLD_API_URL \
             -e SENTINEL_LOG_LEVEL \

@@ -69,6 +69,7 @@ fn test_config(graphql_url: &str) -> AppConfig {
         crates_log_level: tracing::Level::WARN,
         log_format: LogFormat::Pretty,
         discord_token: "unused".into(),
+        graphql_name_scan_threshold: 50,
     }
 }
 
