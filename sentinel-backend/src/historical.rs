@@ -194,7 +194,9 @@ pub async fn load_historical_killmails(
                     .map(|k| k >= STRUCTURE_ITEM_ID_MIN)
                     .unwrap_or(false);
             let credited_killer = if killed_by_structure {
-                reported_by_id.or(killer_id)
+                // Credit the player who owns the structure (reported_by), not the
+                // structure item itself — structure IDs are not pilot profiles.
+                reported_by_id
             } else {
                 killer_id
             };
@@ -236,7 +238,8 @@ pub async fn load_historical_killmails(
                     }
                 }
                 profile.last_kill_timestamp = profile.last_kill_timestamp.max(timestamp);
-                if !system.is_empty() {
+                if !system.is_empty() && profile.last_seen_system != system {
+                    profile.systems_visited += 1;
                     profile.last_seen_system = system.clone();
                 }
                 profile.threat_score = threat_engine::compute_score(profile);
@@ -253,7 +256,8 @@ pub async fn load_historical_killmails(
                     if is_new {
                         profile.death_count += 1;
                     }
-                    if !system.is_empty() {
+                    if !system.is_empty() && profile.last_seen_system != system {
+                        profile.systems_visited += 1;
                         profile.last_seen_system = system.clone();
                     }
                     profile.threat_score = threat_engine::compute_score(profile);
@@ -1217,16 +1221,25 @@ async fn finalize(state: &Arc<RwLock<AppState>>) {
     let day_ago = now_ms.saturating_sub(604_800_000); // 7 days
 
     let mut kill_counts_24h: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+    let mut death_counts_24h: std::collections::HashMap<u64, u64> =
+        std::collections::HashMap::new();
     for e in &s.live.recent_events {
         if e.event_type == "kill" && e.timestamp_ms >= day_ago {
             if let Some(kid) = e.data.get("killer_character_id").and_then(|v| v.as_u64()) {
                 *kill_counts_24h.entry(kid).or_default() += 1;
+            }
+            if let Some(vid) = e.data.get("target_item_id").and_then(|v| v.as_u64()) {
+                *death_counts_24h.entry(vid).or_default() += 1;
             }
         }
     }
 
     for p in s.live.profiles.values_mut() {
         p.recent_kills_24h = kill_counts_24h
+            .get(&p.character_item_id)
+            .copied()
+            .unwrap_or(0);
+        p.recent_deaths_24h = death_counts_24h
             .get(&p.character_item_id)
             .copied()
             .unwrap_or(0);

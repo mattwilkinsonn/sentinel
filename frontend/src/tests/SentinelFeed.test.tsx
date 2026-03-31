@@ -19,6 +19,7 @@ const defaults: ThreatProfile = {
   titles: [],
   threat_tier: "LOW",
   recent_kills_24h: 0,
+  recent_deaths_24h: 0,
   systems_visited: 0,
 };
 

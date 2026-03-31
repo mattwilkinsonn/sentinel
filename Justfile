@@ -25,6 +25,14 @@ contracts-test:
 contracts-deploy:
     cd move-contracts/sentinel && sui client publish --build-env testnet
 
+# Deploy bounty board package to testnet (step 1 of 2 — sets BUILDER_PACKAGE_ID and EXTENSION_CONFIG_ID)
+bounty-deploy:
+    cd move-contracts/bounty_board && sui client publish --build-env testnet
+
+# Create BountyBoard shared object (step 2 of 2 — run after bounty-deploy and setting BUILDER_PACKAGE_ID)
+bounty-create-board:
+    cd ts-scripts && bun run bounty_board/create-board.ts
+
 # Create threat registry (after deploy)
 sentinel-create-registry:
     cd ts-scripts && bun run sentinel/create-registry.ts

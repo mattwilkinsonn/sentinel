@@ -403,7 +403,9 @@ fn handle_killmail(
     let (credited_killer, structure_name) = if killed_by_structure {
         let structure_item_id = killer_id.unwrap();
         let name = state.resolve_structure_name(structure_item_id);
-        (reported_by_id.or(killer_id), Some(name))
+        // Credit the player who owns the structure (reported_by), not the
+        // structure item itself — structure IDs are not pilot profiles.
+        (reported_by_id, Some(name))
     } else {
         (killer_id, None)
     };
@@ -421,6 +423,9 @@ fn handle_killmail(
         profile.kill_count += 1;
         profile.recent_kills_24h += 1;
         profile.last_kill_timestamp = timestamp_ms;
+        if !system.is_empty() && profile.last_seen_system != system {
+            profile.systems_visited += 1;
+        }
         profile.last_seen_system = system.clone();
         profile.last_seen_system_name = system_name.clone();
         profile.dirty = true;
@@ -439,6 +444,10 @@ fn handle_killmail(
                     ..Default::default()
                 });
             profile.death_count += 1;
+            profile.recent_deaths_24h += 1;
+            if !system.is_empty() && profile.last_seen_system != system {
+                profile.systems_visited += 1;
+            }
             profile.last_seen_system = system.clone();
             profile.last_seen_system_name = system_name.clone();
             profile.dirty = true;

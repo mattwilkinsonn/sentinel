@@ -1,0 +1,2 @@
+ALTER TABLE threat_profiles
+    ADD COLUMN IF NOT EXISTS recent_deaths_24h BIGINT NOT NULL DEFAULT 0;

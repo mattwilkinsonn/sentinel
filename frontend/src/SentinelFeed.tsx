@@ -48,7 +48,9 @@ const eventConfig: Record<string, EventDisplay> = {
     borderColor: "var(--color-accent-red)",
     format: (d, l) =>
       d.killed_by_structure
-        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} killed ${l.n(d.target_item_id)}`
+        ? d.killer_character_id != null
+          ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} killed ${l.n(d.target_item_id)}`
+          : `${d.structure_name ?? "A structure"} killed ${l.n(d.target_item_id)}`
         : `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
   },
   structure_destroyed: {
@@ -57,7 +59,9 @@ const eventConfig: Record<string, EventDisplay> = {
     borderColor: "var(--color-accent-orange)",
     format: (d, l) =>
       d.killed_by_structure
-        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} destroyed a structure`
+        ? d.killer_character_id != null
+          ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} destroyed a structure`
+          : `${d.structure_name ?? "A structure"} destroyed a structure`
         : `${l.n(d.killer_character_id)} destroyed a structure`,
   },
   bounty_posted: {
