@@ -11,7 +11,7 @@
   "dependencies": {
     "@evefrontier/dapp-kit": "^0.1.5",
     "@mysten/dapp-kit-core": "^1.1.4",
-    "@mysten/dapp-kit-react": "^1.1.0",
+    "@mysten/dapp-kit-react": "^2.0.1",
     "@mysten/sui": "^2.6.0",
     "@radix-ui/colors": "^3.0.0",
     "@radix-ui/react-icons": "^1.3.2",
