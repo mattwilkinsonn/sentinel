@@ -28,8 +28,10 @@ export type ThreatProfile = {
   titles: string[];
   /** Pre-computed tier bucket; mirrors the result of `getThreatTier(threat_score)`. */
   threat_tier: ThreatTier;
-  /** Kills recorded in the rolling 24-hour window. Drives the recency component of the score. */
+  /** Kills recorded in the rolling 7-day window. Drives the recency component of the score. */
   recent_kills_24h: number;
+  /** Deaths recorded in the rolling 7-day window. Used for recent K/D scoring. */
+  recent_deaths_24h: number;
   /** Distinct solar systems the pilot has been observed in. Drives the movement component. */
   systems_visited: number;
 };
@@ -65,18 +67,20 @@ export type AggregateStats = {
 };
 
 /**
- * The five weighted components that sum to a pilot's composite threat score.
+ * The six weighted components that sum to a pilot's composite threat score.
  * All values are ×100 integers — divide by 100 for the human-readable display
  * value. The maximum for each component is defined by `computeBreakdown`.
  */
 export type ScoreBreakdown = {
-  /** Logarithmic all-time kill contribution. Capped at 2000 (display: 20). */
-  kills: number;
-  /** Recent activity bonus based on kills in the last 24h. Capped at 3500. */
+  /** Recent (7d) K/D ratio contribution. Capped at 3000. Zero if no recent kills. */
+  kd_recent: number;
+  /** Recent activity bonus based on kills in the last 7d. Capped at 3000. */
   recency: number;
-  /** Kill/death ratio contribution. Capped at 1500. */
+  /** Overall K/D ratio contribution. Capped at 1500. Requires kd ≥ 10 to cap. */
   kd: number;
-  /** Contribution from active bounties placed on this pilot. Capped at 1500. */
+  /** Logarithmic all-time kill contribution. Capped at 1000 (display: 10). */
+  kills: number;
+  /** Contribution from active bounties placed on this pilot. Capped at 1000. */
   bounties: number;
   /** Movement score based on number of distinct systems visited. Capped at 500. */
   movement: number;
@@ -85,17 +89,24 @@ export type ScoreBreakdown = {
 /**
  * Re-computes the score breakdown client-side from a raw profile so the UI can
  * render a stacked bar without an extra API call. The formula mirrors the
- * backend scoring logic; keep both in sync when tuning weights.
+ * backend scoring logic in threat_engine.rs; keep both in sync when tuning weights.
+ * Deaths are floored at 1 so 0-death pilots get kd = kills/1 (not infinite).
  */
 export function computeBreakdown(p: ThreatProfile): ScoreBreakdown {
-  const kills = Math.min(2000, Math.floor(Math.log2(p.kill_count + 1) * 600));
-  const recency = Math.min(3500, p.recent_kills_24h * 600);
-  const kd_ratio =
-    p.death_count > 0 ? p.kill_count / p.death_count : p.kill_count;
-  const kd = Math.min(1500, Math.floor(kd_ratio * 400));
-  const bounties = Math.min(1500, p.bounty_count * 500);
+  const deaths = Math.max(1, p.death_count);
+  const kd = Math.min(1500, Math.floor((p.kill_count / deaths) * 150));
+
+  const recentDeaths = Math.max(1, p.recent_deaths_24h);
+  const kd_recent =
+    p.recent_kills_24h > 0
+      ? Math.min(3000, Math.floor((p.recent_kills_24h / recentDeaths) * 300))
+      : 0;
+
+  const recency = Math.min(3000, p.recent_kills_24h * 500);
+  const kills = Math.min(1000, Math.floor(Math.log2(p.kill_count + 1) * 300));
+  const bounties = Math.min(1000, p.bounty_count * 333);
   const movement = Math.min(500, p.systems_visited * 100);
-  return { kills, recency, kd, bounties, movement };
+  return { kd, kd_recent, recency, kills, bounties, movement };
 }
 
 /**

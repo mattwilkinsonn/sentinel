@@ -15,8 +15,10 @@ pub struct ThreatProfile {
     pub last_seen_system_name: String,
     pub tribe_id: String,
     pub tribe_name: String,
-    /// Kills in the last 24 hours (for recency scoring)
+    /// Kills in the last 7 days (for recency scoring)
     pub recent_kills_24h: u64,
+    /// Deaths in the last 7 days (for recent K/D scoring)
+    pub recent_deaths_24h: u64,
     /// Number of unique systems visited
     pub systems_visited: u64,
     /// Whether this profile has been modified since last DB sync

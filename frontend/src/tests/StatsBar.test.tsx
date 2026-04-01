@@ -30,6 +30,7 @@ describe("StatsBar", () => {
       titles: [],
       threat_tier: "CRITICAL",
       recent_kills_24h: 3,
+      recent_deaths_24h: 0,
       systems_visited: 1,
     },
   ];

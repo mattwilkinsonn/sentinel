@@ -4,17 +4,15 @@ Deadline: March 31, 2026 23:59 UTC
 
 ## Critical (must do)
 
-- [ ] **Bounty board wallet connection + post UI** — wire up wallet
-      connection (deps already installed: `@mysten/wallet-standard`).
-      Add post-bounty form to the frontend — port from `dapps/src/PostBountyForm.tsx`
-      which already has the full transaction code. Required before any
-      real bounties can be posted by players on Stillness.
+- [x] ~~Bounty board wallet connection + post UI~~ — `WalletContext.tsx`
+      wraps `@mysten/wallet-standard` `getWallets()` in Solid signals.
+      Header wallet button: detect/connect/disconnect. POST BOUNTY button
+      in BountyBoard action bar; `PostBountyForm.tsx` ported from dapps.
 - [ ] **Bounty board claim UI** — add claim button to bounty cards.
       Port from `dapps/src/BountyBoard.tsx` claim logic. Requires wallet
       connection above.
-- [ ] **Emit score_change events in live mode** — currently only generated
-      in demo. Push a `score_change` event to `recent_events` when a
-      profile's threat score is recalculated (in `finalize` or live scoring).
+- [x] ~~Emit score_change events in live mode~~ — pushed after each kill,
+      bounty, and jump handler in grpc.rs when score actually changes.
 - [ ] **Get live on Stillness** — we receive Stillness events but have no
       real bounties. Need at least a few real bounty transactions on-chain
       so the demo shows actual data, not just kills/jumps. Critical for

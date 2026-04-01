@@ -1,7 +1,9 @@
 import { Navigation, Shield, Skull, Target, Trophy, Zap } from "lucide-solid";
+import type { JSX } from "solid-js";
 import { type Component, createSignal, For, onCleanup } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import type { RawEvent, ThreatProfile } from "./types";
+import { getThreatColor, getThreatTier } from "./types";
 
 type SentinelFeedProps = {
   /** Pre-filtered events to display (caller handles the name-resolution filter). */
@@ -32,7 +34,7 @@ type EventDisplay = {
   /** CSS colour value used for the left accent border of each feed entry. */
   borderColor: string;
   /** Produces the human-readable summary line for one event payload. */
-  format: (data: Record<string, unknown>, l: Lookups) => string;
+  format: (data: Record<string, unknown>, l: Lookups) => JSX.Element;
 };
 
 /**
@@ -46,7 +48,9 @@ const eventConfig: Record<string, EventDisplay> = {
     borderColor: "var(--color-accent-red)",
     format: (d, l) =>
       d.killed_by_structure
-        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} killed ${l.n(d.target_item_id)}`
+        ? d.killer_character_id != null
+          ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} killed ${l.n(d.target_item_id)}`
+          : `${d.structure_name ?? "A structure"} killed ${l.n(d.target_item_id)}`
         : `${l.n(d.killer_character_id)} killed ${l.n(d.target_item_id)}`,
   },
   structure_destroyed: {
@@ -55,7 +59,9 @@ const eventConfig: Record<string, EventDisplay> = {
     borderColor: "var(--color-accent-orange)",
     format: (d, l) =>
       d.killed_by_structure
-        ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} destroyed a structure`
+        ? d.killer_character_id != null
+          ? `${l.n(d.killer_character_id)}'s ${d.structure_name ?? "Structure"} destroyed a structure`
+          : `${d.structure_name ?? "A structure"} destroyed a structure`
         : `${l.n(d.killer_character_id)} destroyed a structure`,
   },
   bounty_posted: {
@@ -89,7 +95,31 @@ const eventConfig: Record<string, EventDisplay> = {
     icon: Shield,
     color: "text-accent-gold",
     borderColor: "var(--color-accent-gold)",
-    format: (d, l) => `${l.n(d.character_id)} score → ${d.new_score ?? "?"}`,
+    format: (d, l) => {
+      const score = d.new_score as number | null | undefined;
+      const delta = d.delta as number | null | undefined;
+      const oldScore = score != null && delta != null ? score - delta : null;
+      const verb = delta != null && delta >= 0 ? "▲" : "▼";
+      const verbColor =
+        delta != null && delta >= 0
+          ? "var(--color-accent-red)"
+          : "var(--color-accent-green)";
+      const fmt = (v: number) => (v / 100).toFixed(2);
+      const colorFor = (v: number) => getThreatColor(getThreatTier(v));
+      return (
+        <span>
+          {l.n(d.character_id)} score{" "}
+          <span style={{ color: verbColor }}>{verb}</span>{" "}
+          <span style={oldScore != null ? { color: colorFor(oldScore) } : {}}>
+            {oldScore != null ? fmt(oldScore) : "?"}
+          </span>
+          {" → "}
+          <span style={score != null ? { color: colorFor(score) } : {}}>
+            {score != null ? fmt(score) : "?"}
+          </span>
+        </span>
+      );
+    },
   },
   bounty_stacked: {
     icon: Target,
@@ -167,7 +197,17 @@ export function SentinelFeed(props: SentinelFeedProps) {
         LIVE INTEL
       </h4>
       <div class="flex flex-col gap-1 overflow-hidden flex-1 min-h-0">
-        <For each={props.events.slice(0, 50)}>
+        <For
+          each={props.events
+            .filter(
+              (e) =>
+                e.event_type !== "score_change" ||
+                Math.abs(
+                  ((e.data as Record<string, unknown>).delta as number) ?? 0,
+                ) >= 500,
+            )
+            .slice(0, 50)}
+        >
           {(event) => {
             const config = () =>
               eventConfig[event.event_type] ?? eventConfig.kill;

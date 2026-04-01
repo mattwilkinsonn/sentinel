@@ -10,6 +10,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/004_discord_alert_channels.sql"),
     include_str!("../migrations/005_structure_cache.sql"),
     include_str!("../migrations/006_nullable_profile_name.sql"),
+    include_str!("../migrations/007_recent_deaths.sql"),
 ];
 
 /// Run all migrations on an existing pool.
@@ -39,7 +40,7 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
     let rows = sqlx::query_as::<_, ProfileRow>(
         "SELECT character_item_id, name, threat_score, kill_count, death_count, \
          bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-         systems_visited, tribe_id, tribe_name, last_seen_system_name \
+         recent_deaths_24h, systems_visited, tribe_id, tribe_name, last_seen_system_name \
          FROM threat_profiles",
     )
     .fetch_all(pool)
@@ -61,6 +62,7 @@ pub async fn load_into(pool: &PgPool, store: &mut DataStore) -> Result<(), sqlx:
                 tribe_id: r.tribe_id,
                 tribe_name: r.tribe_name,
                 recent_kills_24h: r.recent_kills_24h as u64,
+                recent_deaths_24h: r.recent_deaths_24h as u64,
                 systems_visited: r.systems_visited as u64,
                 ..Default::default()
             },
@@ -108,8 +110,8 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
         "INSERT INTO threat_profiles \
          (character_item_id, name, threat_score, kill_count, death_count, \
           bounty_count, last_kill_timestamp, last_seen_system, recent_kills_24h, \
-          systems_visited, tribe_id, tribe_name, last_seen_system_name, updated_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW()) \
+          recent_deaths_24h, systems_visited, tribe_id, tribe_name, last_seen_system_name, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, NOW()) \
          ON CONFLICT (character_item_id) DO UPDATE SET \
           name = EXCLUDED.name, \
           threat_score = EXCLUDED.threat_score, \
@@ -119,6 +121,7 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
           last_kill_timestamp = EXCLUDED.last_kill_timestamp, \
           last_seen_system = EXCLUDED.last_seen_system, \
           recent_kills_24h = EXCLUDED.recent_kills_24h, \
+          recent_deaths_24h = EXCLUDED.recent_deaths_24h, \
           systems_visited = EXCLUDED.systems_visited, \
           tribe_id = EXCLUDED.tribe_id, \
           tribe_name = EXCLUDED.tribe_name, \
@@ -134,6 +137,7 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
     .bind(p.last_kill_timestamp as i64)
     .bind(&p.last_seen_system)
     .bind(p.recent_kills_24h as i64)
+    .bind(p.recent_deaths_24h as i64)
     .bind(p.systems_visited as i64)
     .bind(&p.tribe_id)
     .bind(&p.tribe_name)
@@ -212,6 +216,7 @@ struct ProfileRow {
     tribe_id: String,
     tribe_name: String,
     recent_kills_24h: i64,
+    recent_deaths_24h: i64,
     systems_visited: i64,
 }
 

@@ -20,6 +20,7 @@ function makeProfile(overrides: Partial<ThreatProfile> = {}): ThreatProfile {
     titles: [],
     threat_tier: "MODERATE",
     recent_kills_24h: 3,
+    recent_deaths_24h: 0,
     systems_visited: 5,
     ...overrides,
   };

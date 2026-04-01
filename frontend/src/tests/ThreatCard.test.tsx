@@ -19,6 +19,7 @@ const mockProfile: ThreatProfile = {
   titles: ["Apex Predator", "Most Wanted"],
   threat_tier: "CRITICAL",
   recent_kills_24h: 8,
+  recent_deaths_24h: 0,
   systems_visited: 15,
 };
 

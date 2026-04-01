@@ -163,7 +163,6 @@ jobs:
             -e BUILDER_PACKAGE_ID \
             -e SENTINEL_PUBLISH_INTERVAL_MS \
             -e SENTINEL_PUBLISH_THRESHOLD_BP \
-            -e GRAPHQL_NAME_SCAN_THRESHOLD \
             -e SENTINEL_API_PORT \
             -e WORLD_API_URL \
             -e SENTINEL_LOG_LEVEL \
@@ -219,7 +218,7 @@ jobs:
 
   deploy-production:
     needs: [contracts, backend, frontend, lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/deploy-production.yml
     secrets: inherit
     permissions:
@@ -229,7 +228,7 @@ jobs:
 
   deploy-dev:
     needs: [contracts, backend, frontend, lint]
-    if: github.ref != 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref != 'refs/heads/main' && github.event_name == 'push' && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/deploy-dev.yml
     secrets: inherit
     permissions:

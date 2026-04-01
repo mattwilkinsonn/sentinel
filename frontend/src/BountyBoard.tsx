@@ -2,13 +2,17 @@ import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import {
   Clock,
   Crosshair,
+  Plus,
   RefreshCw,
   Target,
   Trophy,
   User,
   Users,
+  X,
 } from "lucide-solid";
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { PostBountyForm } from "./PostBountyForm";
+import { useWallet } from "./WalletContext";
 
 const BOUNTY_BOARD_ID = import.meta.env.VITE_BOUNTY_BOARD_ID || "";
 const BUILDER_PACKAGE_ID = import.meta.env.VITE_BUILDER_PACKAGE_ID || "";
@@ -19,8 +23,8 @@ const SUI_RPC_URL =
 type Contribution = {
   /** Sui wallet address of the contributor. */
   contributor: string;
-  /** Number of reward tokens this contributor added. */
-  amount: number;
+  /** SUI contributed in MIST. */
+  amount: bigint;
 };
 
 /**
@@ -35,10 +39,8 @@ type Bounty = {
   target_item_id: string;
   /** In-game tenant/faction of the target. */
   target_tenant: string;
-  /** Move type ID of the reward token. */
-  reward_type_id: string;
-  /** Total reward quantity across all contributors. */
-  reward_quantity: number;
+  /** Total escrowed SUI reward in MIST (1 SUI = 1_000_000_000 MIST). */
+  reward_mist: bigint;
   /** Sui address of the original poster. */
   poster: string;
   /**
@@ -101,14 +103,26 @@ function useCountdown(expiresAtMs: string) {
   return display;
 }
 
+const SUI_MIST = 1_000_000_000n;
+
+/** Format MIST as a human-readable SUI string (e.g. 1500000000 → "1.5 SUI"). */
+function formatSui(mist: bigint): string {
+  const whole = mist / SUI_MIST;
+  const frac = mist % SUI_MIST;
+  if (frac === 0n) return `${whole} SUI`;
+  const fracStr = frac.toString().padStart(9, "0").replace(/0+$/, "");
+  return `${whole}.${fracStr} SUI`;
+}
+
 /**
- * Classifies a reward quantity into a display tier.
- * Thresholds: BRONZE < 10, SILVER ≥ 10, GOLD ≥ 50, DIAMOND ≥ 100.
+ * Classifies a SUI reward into a display tier.
+ * Thresholds: BRONZE < 1 SUI, SILVER ≥ 1, GOLD ≥ 10, DIAMOND ≥ 100.
  */
-function getRewardTier(quantity: number) {
-  if (quantity >= 100) return { label: "DIAMOND", class: "text-tier-diamond" };
-  if (quantity >= 50) return { label: "GOLD", class: "text-tier-gold" };
-  if (quantity >= 10) return { label: "SILVER", class: "text-tier-silver" };
+function getRewardTier(mist: bigint) {
+  if (mist >= 100n * SUI_MIST)
+    return { label: "DIAMOND", class: "text-tier-diamond" };
+  if (mist >= 10n * SUI_MIST) return { label: "GOLD", class: "text-tier-gold" };
+  if (mist >= SUI_MIST) return { label: "SILVER", class: "text-tier-silver" };
   return { label: "BRONZE", class: "text-tier-bronze" };
 }
 
@@ -124,10 +138,12 @@ function getRewardTier(quantity: number) {
  * shown instead of making any RPC calls.
  */
 export function BountyBoard() {
+  const { connectedAddress } = useWallet();
   const [bounties, setBounties] = createSignal<Bounty[]>([]);
   const [events, setEvents] = createSignal<ActivityEvent[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [showPostForm, setShowPostForm] = createSignal(false);
 
   const client = new SuiJsonRpcClient({ url: SUI_RPC_URL, network: "testnet" });
 
@@ -167,7 +183,7 @@ export function BountyBoard() {
             // biome-ignore lint/suspicious/noExplicitAny: Sui contributor array has dynamic fields
             (c: any) => ({
               contributor: c.fields?.contributor || "",
-              amount: Number(c.fields?.amount || 0),
+              amount: BigInt(c.fields?.amount || 0),
             }),
           );
 
@@ -175,8 +191,7 @@ export function BountyBoard() {
             id: Number(fields.id),
             target_item_id: String(fields.target_item_id || "?"),
             target_tenant: String(fields.target_tenant || "?"),
-            reward_type_id: String(fields.reward_type_id || "?"),
-            reward_quantity: Number(fields.reward_quantity || 0),
+            reward_mist: BigInt(fields.reward_mist || 0),
             poster: String(fields.poster || "?"),
             expires_at: String(fields.expires_at || "0"),
             claimed: Boolean(fields.claimed),
@@ -316,23 +331,59 @@ export function BountyBoard() {
             ACTIVE BOUNTIES{" "}
             <span class="text-text-muted text-sm">({active().length})</span>
           </h3>
-          <button
-            type="button"
-            onClick={() => {
-              fetchBounties();
-              fetchEvents();
-            }}
-            disabled={loading()}
-            class="flex items-center gap-2 px-3 py-2 border border-border-default rounded bg-transparent text-text-secondary hover:text-text-primary hover:border-border-hover transition-all text-sm"
-          >
-            <RefreshCw size={14} class={loading() ? "animate-spin" : ""} />
-            {loading() ? "LOADING" : "REFRESH"}
-          </button>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                fetchBounties();
+                fetchEvents();
+              }}
+              disabled={loading()}
+              class="flex items-center gap-2 px-3 py-2 border border-border-default rounded bg-transparent text-text-secondary hover:text-text-primary hover:border-border-hover transition-all text-sm disabled:opacity-40"
+            >
+              <RefreshCw size={14} class={loading() ? "animate-spin" : ""} />
+              {loading() ? "LOADING" : "REFRESH"}
+            </button>
+            <Show
+              when={connectedAddress()}
+              fallback={
+                <span class="flex items-center px-3 py-2 text-xs text-text-muted border border-border-default rounded">
+                  Connect wallet to post
+                </span>
+              }
+            >
+              <button
+                type="button"
+                onClick={() => setShowPostForm(!showPostForm())}
+                class={`flex items-center gap-2 px-4 py-2 border rounded text-sm transition-all ${
+                  showPostForm()
+                    ? "border-accent-red text-accent-red hover:bg-accent-red/10"
+                    : "border-accent-cyan text-accent-cyan hover:bg-accent-cyan/10"
+                }`}
+              >
+                {showPostForm() ? <X size={14} /> : <Plus size={14} />}
+                {showPostForm() ? "CANCEL" : "POST BOUNTY"}
+              </button>
+            </Show>
+          </div>
         </div>
 
         <Show when={error()}>
           <div class="mb-4 p-3 border border-accent-red/50 rounded bg-accent-red/5 text-accent-red text-sm">
             {error()}
+          </div>
+        </Show>
+
+        {/* Post bounty form */}
+        <Show when={showPostForm()}>
+          <div style="margin-bottom:1.5rem">
+            <PostBountyForm
+              onSuccess={() => {
+                setShowPostForm(false);
+                fetchBounties();
+                fetchEvents();
+              }}
+            />
           </div>
         </Show>
 
@@ -463,14 +514,14 @@ function BountyCard(props: { bounty: Bounty }) {
   const b = props.bounty;
   const countdown = useCountdown(b.expires_at);
   const isExpired = () => countdown() === "EXPIRED" && !b.claimed;
-  const tier = getRewardTier(b.reward_quantity);
+  const tier = getRewardTier(b.reward_mist);
   const hasMultiple = b.contributors.length > 1;
   const [showContrib, setShowContrib] = createSignal(false);
 
   const expiresIn = Number(b.expires_at) - Date.now();
   const isUrgent =
     !b.claimed && !isExpired() && expiresIn < 7_200_000 && expiresIn > 0;
-  const isHighValue = b.reward_quantity >= 50;
+  const isHighValue = b.reward_mist >= 10n * SUI_MIST;
 
   const cardClass = () => {
     let c = "glass-card p-4 transition-all";
@@ -539,7 +590,7 @@ function BountyCard(props: { bounty: Bounty }) {
                 <For each={b.contributors}>
                   {(c) => (
                     <div class="text-xs text-text-muted py-0.5">
-                      {abbreviate(c.contributor)}: {c.amount}x
+                      {abbreviate(c.contributor)}: {formatSui(c.amount)}
                     </div>
                   )}
                 </For>
@@ -550,10 +601,9 @@ function BountyCard(props: { bounty: Bounty }) {
 
         {/* Right: reward + timer */}
         <div class="text-right shrink-0">
-          <div class={`text-2xl font-bold ${tier.class}`}>
-            {b.reward_quantity}x
+          <div class={`text-xl font-bold ${tier.class}`}>
+            {formatSui(b.reward_mist)}
           </div>
-          <div class="text-xs text-text-muted">Type #{b.reward_type_id}</div>
           <div class={`text-xs mt-0.5 ${tier.class}`}>{tier.label}</div>
           <Show when={!b.claimed}>
             <div

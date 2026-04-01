@@ -52,3 +52,23 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+
+      - name: Wait for ECS service to stabilize
+        run: |
+          CLUSTER=$(aws resourcegroupstaggingapi get-resources \
+            --tag-filters Key=sst:app,Values=sentinel Key=sst:stage,Values=dev \
+            --resource-type-filters ecs:cluster \
+            --query 'ResourceTagMappingList[0].ResourceARN' --output text)
+          SERVICE=$(aws resourcegroupstaggingapi get-resources \
+            --tag-filters Key=sst:app,Values=sentinel Key=sst:stage,Values=dev \
+            --resource-type-filters ecs:service \
+            --query 'ResourceTagMappingList[0].ResourceARN' --output text)
+          echo "Cluster: $CLUSTER"
+          echo "Service: $SERVICE"
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
+          FAILED=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query "services[0].deployments[?rolloutState=='FAILED'] | length(@)" --output text)
+          if [ "$FAILED" -gt "0" ]; then
+            echo "ECS deployment failed and rolled back to previous task definition"
+            exit 1
+          fi

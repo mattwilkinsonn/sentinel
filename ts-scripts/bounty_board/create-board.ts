@@ -3,12 +3,7 @@ import { config } from "dotenv";
 config({ path: "../.env" });
 
 import { Transaction } from "@mysten/sui/transactions";
-import {
-  getEnvConfig,
-  handleError,
-  initializeContext,
-  requireEnv,
-} from "../utils/helper";
+import { getEnvConfig, handleError, initializeContext } from "../utils/helper";
 import { requireBuilderPackageId } from "./extension-ids";
 import { MODULE } from "./modules";
 
@@ -20,8 +15,6 @@ async function main() {
     const ctx = initializeContext(env.network, env.adminExportedKey);
     const { client, keypair, address } = ctx;
 
-    // Only need builderPackageId + AdminCap — don't require BOUNTY_BOARD_ID
-    // (that's what we're creating here)
     const builderPackageId = requireBuilderPackageId();
     const adminCapType = `${builderPackageId}::${MODULE.CONFIG}::AdminCap`;
     const ownedObjects = await client.getOwnedObjects({
@@ -36,13 +29,10 @@ async function main() {
       );
     }
 
-    const storageUnitId = requireEnv("STORAGE_UNIT_ID");
-
     const tx = new Transaction();
-
     tx.moveCall({
       target: `${builderPackageId}::${MODULE.BOUNTY_BOARD}::create_board`,
-      arguments: [tx.object(adminCapId), tx.pure.id(storageUnitId)],
+      arguments: [tx.object(adminCapId)],
     });
 
     const result = await client.signAndExecuteTransaction({
@@ -54,14 +44,14 @@ async function main() {
     console.log("Bounty board created!");
     console.log("Transaction digest:", result.digest);
 
-    // Find the created BountyBoard object
     const changes = result.objectChanges || [];
     const boardObj = changes.find(
       (c: any) => c.type === "created" && c.objectType?.includes("BountyBoard"),
     );
     if (boardObj && "objectId" in boardObj) {
       console.log("\nBountyBoard object ID:", boardObj.objectId);
-      console.log("Add this to .env as BOUNTY_BOARD_ID");
+      console.log("Add to .env:          BOUNTY_BOARD_ID=<id>");
+      console.log("Add to frontend/.env: VITE_BOUNTY_BOARD_ID=<id>");
     }
   } catch (error) {
     handleError(error);

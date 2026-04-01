@@ -185,32 +185,48 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                     {(() => {
                       const b = computeBreakdown(profile);
                       const total =
-                        b.kills + b.recency + b.kd + b.bounties + b.movement;
+                        b.kd +
+                        b.kd_recent +
+                        b.recency +
+                        b.kills +
+                        b.bounties +
+                        b.movement;
                       const barMax = Math.max(total, 1);
                       const factors = [
                         {
-                          label: "Kills",
-                          value: b.kills,
+                          label: "K/D Recent (7d)",
+                          value: b.kd_recent,
+                          max: 3000,
+                          color: "var(--color-accent-gold)",
+                        },
+                        {
+                          label: "Recent Kills (7d)",
+                          value: b.recency,
+                          max: 3000,
                           color: "var(--color-accent-red)",
                         },
                         {
-                          label: "Recent 24h",
-                          value: b.recency,
-                          color: "var(--color-accent-orange)",
+                          label: "K/D Overall",
+                          value: b.kd,
+                          max: 1500,
+                          color: "var(--color-accent-green)",
                         },
                         {
-                          label: "K/D Ratio",
-                          value: b.kd,
-                          color: "var(--color-accent-gold)",
+                          label: "All-time Kills",
+                          value: b.kills,
+                          max: 1000,
+                          color: "var(--color-accent-blue)",
                         },
                         {
                           label: "Bounties",
                           value: b.bounties,
+                          max: 1000,
                           color: "var(--color-accent-cyan)",
                         },
                         {
                           label: "Movement",
                           value: b.movement,
+                          max: 500,
                           color: "var(--color-accent-purple)",
                         },
                       ];
@@ -246,7 +262,10 @@ export function ThreatLeaderboard(props: ThreatLeaderboardProps) {
                                   {f.label}
                                 </span>
                                 <span class="text-text-secondary">
-                                  {(f.value / 100).toFixed(1)}
+                                  {(f.value / 100).toFixed(1)}{" "}
+                                  <span class="text-text-muted">
+                                    / {(f.max / 100).toFixed(1)}
+                                  </span>
                                 </span>
                               </div>
                             ))}
