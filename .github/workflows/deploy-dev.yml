@@ -84,8 +84,12 @@ jobs:
             STATUS=$(echo "$SVC_JSON" | jq -r '.deployments[0].rolloutState')
             RUNNING=$(echo "$SVC_JSON" | jq -r '.runningCount')
             DESIRED=$(echo "$SVC_JSON" | jq -r '.desiredCount')
-            TASK_DEF=$(echo "$SVC_JSON" | jq -r '.deployments[0].taskDefinition | split("/")[-1]')
-            echo "$(date -u +%H:%M:%S) rolloutState=$STATUS running=$RUNNING desired=$DESIRED taskDef=$TASK_DEF"
+            echo "$(date -u +%H:%M:%S) rolloutState=$STATUS running=$RUNNING desired=$DESIRED"
+            echo "$SVC_JSON" | jq -r '
+              .deployments[] |
+              "  [\(.status)] taskDef=\(.taskDefinition | split("/")[-1])" +
+              " running=\(.runningCount) desired=\(.desiredCount)" +
+              " state=\(.rolloutState // "n/a")"'
 
             if [ "$STATUS" = "COMPLETED" ] && [ "$RUNNING" = "$DESIRED" ]; then
               echo "Service stable"
