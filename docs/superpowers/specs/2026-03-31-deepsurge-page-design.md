@@ -87,6 +87,8 @@ Every kill, bounty, and Smart Gate transit is ingested in real time via Sui's gR
 
 Fleet commanders get a live leaderboard of the most dangerous pilots in the network. Corp members get Discord alerts the moment a **CRITICAL**-tier threat is detected. The dashboard shows earned titles (**Apex Predator**, **Bounty Hunter**), system hotspots, and a streaming event feed updated as each checkpoint lands.
 
+The network runs a **Bounty Board** — a fully on-chain contract where players post SUI coin rewards for confirmed kills. Post a bounty on any pilot by name, set the reward and expiry, and the contract holds the SUI in escrow. Hunters claim by presenting a verified killmail; the contract checks the victim and killer match, then transfers the reward directly to the hunter's wallet. No travel, no SSU, no trust required.
+
 **Tech stack:** Rust/Tokio backend, Solid.js dashboard, Move smart contracts on Sui, deployed on AWS. The intelligence network is live on Stillness.
 
 **Tone:** EVE-flavored lore hook, then concrete system description, then
@@ -119,9 +121,10 @@ must show the threat leaderboard — not the event feed. Key beats to cover:
 
 1. Live leaderboard with threat tiers and earned titles
 2. Real-time event feed updating as checkpoints land
-3. Discord bot slash commands and CRITICAL alert
-4. On-chain registry / publisher
-5. Smart Gate blocking a CRITICAL-tier pilot (if achievable)
+3. Bounty Board — post a SUI bounty by pilot name, show escrow + claim flow
+4. Discord bot slash commands and CRITICAL alert
+5. On-chain registry / publisher
+6. Smart Gate blocking a CRITICAL-tier pilot (if achievable)
 
 ---
 
