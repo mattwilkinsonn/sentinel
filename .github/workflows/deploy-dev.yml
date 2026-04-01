@@ -65,10 +65,44 @@ jobs:
             --query 'ResourceTagMappingList[0].ResourceARN' --output text)
           echo "Cluster: $CLUSTER"
           echo "Service: $SERVICE"
-          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
-          FAILED=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
-            --query "services[0].deployments[?rolloutState=='FAILED'] | length(@)" --output text)
-          if [ "$FAILED" -gt "0" ]; then
-            echo "ECS deployment failed and rolled back to previous task definition"
-            exit 1
-          fi
+
+          LOG_GROUP="/sst/sentinel/dev/backend"
+          DEADLINE=$(( $(date +%s) + 600 ))
+
+          while true; do
+            NOW=$(date +%s)
+            if [ "$NOW" -ge "$DEADLINE" ]; then
+              echo "Timed out waiting for service to stabilize"
+              echo "--- Recent CloudWatch logs ---"
+              aws logs tail "$LOG_GROUP" --since 10m --format short || true
+              exit 1
+            fi
+
+            STATUS=$(aws ecs describe-services \
+              --cluster "$CLUSTER" --services "$SERVICE" \
+              --query "services[0].deployments[0].rolloutState" --output text)
+            RUNNING=$(aws ecs describe-services \
+              --cluster "$CLUSTER" --services "$SERVICE" \
+              --query "services[0].runningCount" --output text)
+            DESIRED=$(aws ecs describe-services \
+              --cluster "$CLUSTER" --services "$SERVICE" \
+              --query "services[0].desiredCount" --output text)
+            echo "$(date -u +%H:%M:%S) rolloutState=$STATUS running=$RUNNING desired=$DESIRED"
+
+            if [ "$STATUS" = "COMPLETED" ] && [ "$RUNNING" = "$DESIRED" ]; then
+              echo "Service stable"
+              break
+            fi
+
+            if [ "$STATUS" = "FAILED" ]; then
+              echo "ECS deployment failed — printing logs"
+              echo "--- Recent CloudWatch logs ---"
+              aws logs tail "$LOG_GROUP" --since 10m --format short || true
+              echo "--- Service events ---"
+              aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+                --query "services[0].events[:10]" --output table || true
+              exit 1
+            fi
+
+            sleep 15
+          done
