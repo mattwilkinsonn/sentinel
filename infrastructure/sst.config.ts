@@ -25,8 +25,11 @@ const CHAIN_IDS = {
   sentinelAdminCapId:
     "0x63b04e2700e25b29519767027598d223e5286c4e36e90b17105a2c8b2724a52b",
   builderPackageId:
-    "0x9c9cf5193822b91395f206251f58377d1f4486681e1a30fc5078e220911f6b8e",
-  bountyBoardId: "",
+    "0x2df819a1e5a5b21044931b2619cdb8e67d7ff0d22a138fabd94b18d73a795358",
+  extensionConfigId:
+    "0xadcccc30fa3f13b084020ee72977268950d24047b653772335991cbace1f4194",
+  bountyBoardId:
+    "0x6fafed6fd8a529c404029addb34f5688f1cf8131aad5d92a3ab5de4036566288",
 };
 
 interface EnvConfig {
@@ -491,9 +494,11 @@ export default $config({
       },
       environment: {
         VITE_API_URL: `https://api.${domain}`,
-        VITE_BOUNTY_BOARD_ID: CHAIN_IDS.bountyBoardId,
-        VITE_BUILDER_PACKAGE_ID: CHAIN_IDS.builderPackageId,
         VITE_SUI_RPC_URL: "https://fullnode.testnet.sui.io:443",
+        VITE_WORLD_PACKAGE_ID: CHAIN_IDS.worldPackageId,
+        VITE_BUILDER_PACKAGE_ID: CHAIN_IDS.builderPackageId,
+        VITE_EXTENSION_CONFIG_ID: CHAIN_IDS.extensionConfigId,
+        VITE_BOUNTY_BOARD_ID: CHAIN_IDS.bountyBoardId,
       },
     });
 
