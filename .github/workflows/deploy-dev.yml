@@ -78,16 +78,14 @@ jobs:
               exit 1
             fi
 
-            STATUS=$(aws ecs describe-services \
+            SVC_JSON=$(aws ecs describe-services \
               --cluster "$CLUSTER" --services "$SERVICE" \
-              --query "services[0].deployments[0].rolloutState" --output text)
-            RUNNING=$(aws ecs describe-services \
-              --cluster "$CLUSTER" --services "$SERVICE" \
-              --query "services[0].runningCount" --output text)
-            DESIRED=$(aws ecs describe-services \
-              --cluster "$CLUSTER" --services "$SERVICE" \
-              --query "services[0].desiredCount" --output text)
-            echo "$(date -u +%H:%M:%S) rolloutState=$STATUS running=$RUNNING desired=$DESIRED"
+              --query "services[0]" --output json)
+            STATUS=$(echo "$SVC_JSON" | jq -r '.deployments[0].rolloutState')
+            RUNNING=$(echo "$SVC_JSON" | jq -r '.runningCount')
+            DESIRED=$(echo "$SVC_JSON" | jq -r '.desiredCount')
+            TASK_DEF=$(echo "$SVC_JSON" | jq -r '.deployments[0].taskDefinition | split("/")[-1]')
+            echo "$(date -u +%H:%M:%S) rolloutState=$STATUS running=$RUNNING desired=$DESIRED taskDef=$TASK_DEF"
 
             if [ "$STATUS" = "COMPLETED" ] && [ "$RUNNING" = "$DESIRED" ]; then
               echo "Service stable"
