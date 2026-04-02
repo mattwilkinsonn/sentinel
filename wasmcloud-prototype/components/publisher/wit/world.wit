@@ -1,0 +1,20 @@
+package sentinel:publisher@0.1.0;
+
+world publisher {
+    // Triggered by sentinel.publish-tick via messaging
+    import wasmcloud:messaging/consumer@0.2.0;
+
+    // Read dirty profiles, clear dirty flag after publish
+    import wasi:keyvalue/store@0.2.0-draft;
+    import wasi:keyvalue/atomics@0.2.0-draft;
+
+    // Call Sui RPC for on-chain batch_update
+    import wasi:http/outgoing-handler@0.2.1;
+
+    // Sui publisher keypair
+    import wasmcloud:secrets/store@0.1.0-draft;
+
+    import wasi:logging/logging@0.1.0-draft;
+
+    export wasmcloud:messaging/handler@0.2.0;
+}

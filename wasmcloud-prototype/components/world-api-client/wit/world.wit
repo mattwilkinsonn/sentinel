@@ -1,0 +1,15 @@
+package sentinel:world-api-client@0.1.0;
+
+world world-api-client {
+    import wasmcloud:messaging/consumer@0.2.0;
+
+    // Fetch metadata from EVE Frontier World API
+    import wasi:http/outgoing-handler@0.2.1;
+
+    // Write system names, tribe data, type names to KV
+    import wasi:keyvalue/store@0.2.0-draft;
+
+    import wasi:logging/logging@0.1.0-draft;
+
+    export wasmcloud:messaging/handler@0.2.0;
+}

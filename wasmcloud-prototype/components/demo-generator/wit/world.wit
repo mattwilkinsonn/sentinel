@@ -1,0 +1,13 @@
+package sentinel:demo-generator@0.1.0;
+
+world demo-generator {
+    // Triggered by sentinel.demo-tick
+    import wasmcloud:messaging/consumer@0.2.0;
+
+    // Publish fake events to sentinel.events
+    import wasmcloud:messaging/producer@0.2.0;
+
+    import wasi:logging/logging@0.1.0-draft;
+
+    export wasmcloud:messaging/handler@0.2.0;
+}

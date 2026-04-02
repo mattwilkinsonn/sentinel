@@ -1,0 +1,14 @@
+package sentinel:api-handler@0.1.0;
+
+world api-handler {
+    // Serve HTTP requests
+    import wasi:http/outgoing-handler@0.2.1;
+    import wasi:keyvalue/store@0.2.0-draft;
+    import wasi:logging/logging@0.1.0-draft;
+
+    // SSE connection management via sse-bridge
+    import sentinel:sse/server@0.1.0;
+
+    // HTTP handler export
+    export wasi:http/incoming-handler@0.2.1;
+}

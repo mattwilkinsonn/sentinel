@@ -1,0 +1,16 @@
+package sentinel:name-resolver@0.1.0;
+
+world name-resolver {
+    import wasmcloud:messaging/consumer@0.2.0;
+    import wasmcloud:messaging/producer@0.2.0;
+
+    // Read profiles (find unresolved names), write resolved names to KV
+    import wasi:keyvalue/store@0.2.0-draft;
+
+    // World API HTTP calls for names
+    import wasi:http/outgoing-handler@0.2.1;
+
+    import wasi:logging/logging@0.1.0-draft;
+
+    export wasmcloud:messaging/handler@0.2.0;
+}

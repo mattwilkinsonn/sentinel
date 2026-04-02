@@ -1,0 +1,34 @@
+// sentinel:ingestion/types
+// Shared event types produced by sui-bridge and consumed by threat-engine.
+// These are Sentinel's domain types — not Sui SDK types.
+package sentinel:ingestion@0.1.0;
+
+interface types {
+    record kill-event {
+        victim-id: u64,
+        attacker-ids: list<u64>,
+        system-id: string,
+        timestamp: u64,
+        ship-type-id: u64,
+    }
+
+    record bounty-event {
+        target-id: u64,
+        poster-id: u64,
+        amount-mist: u64,
+        timestamp: u64,
+    }
+
+    record gate-event {
+        pilot-id: u64,
+        gate-object-id: string,
+        permitted: bool,
+        timestamp: u64,
+    }
+
+    variant threat-event {
+        kill(kill-event),
+        bounty(bounty-event),
+        gate(gate-event),
+    }
+}

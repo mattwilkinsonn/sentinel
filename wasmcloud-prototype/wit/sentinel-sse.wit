@@ -1,0 +1,14 @@
+// sentinel:sse/server
+// SSE connection management. sse-bridge implements this interface.
+// api-handler calls register-connection when a client opens /api/events/stream,
+// and remove-connection when they disconnect.
+package sentinel:sse@0.1.0;
+
+interface server {
+    /// Register a new SSE connection. sse-bridge will begin streaming
+    /// sentinel.scores updates to the client identified by connection-id.
+    register-connection: func(connection-id: string) -> result<_, string>;
+
+    /// Remove a connection when the client disconnects.
+    remove-connection: func(connection-id: string) -> result<_, string>;
+}

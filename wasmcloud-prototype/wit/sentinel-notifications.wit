@@ -1,0 +1,22 @@
+// sentinel:notifications/alerts
+// App-level alert dispatch. discord-bridge implements this interface.
+// Any future notification backend (Slack, email, webhook) implements the same
+// interface — callers never need to know which backend is active.
+package sentinel:notifications@0.1.0;
+
+interface alerts {
+    /// Send a threat alert to all configured channels for this guild.
+    send-alert: func(
+        pilot-name: string,
+        pilot-id: u64,
+        threat-score: u8,
+        tier: string,
+        system: string,
+    ) -> result<_, string>;
+
+    /// Register a Discord channel to receive CRITICAL threat alerts.
+    set-channel: func(guild-id: string, channel-id: string) -> result<_, string>;
+
+    /// Remove a guild's alert channel registration.
+    remove-channel: func(guild-id: string) -> result<_, string>;
+}

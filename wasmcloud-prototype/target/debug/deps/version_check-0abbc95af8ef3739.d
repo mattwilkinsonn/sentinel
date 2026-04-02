@@ -1,0 +1,10 @@
+/Users/mattwilkinson/git/sentinel/wasmcloud-prototype/target/debug/deps/version_check-0abbc95af8ef3739.d: /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs
+
+/Users/mattwilkinson/git/sentinel/wasmcloud-prototype/target/debug/deps/libversion_check-0abbc95af8ef3739.rlib: /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs
+
+/Users/mattwilkinson/git/sentinel/wasmcloud-prototype/target/debug/deps/libversion_check-0abbc95af8ef3739.rmeta: /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs /Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs
+
+/Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs:
+/Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs:
+/Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs:
+/Users/mattwilkinson/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs:

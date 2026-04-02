@@ -1,0 +1,19 @@
+[package]
+name = "sse-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sse-bridge"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+async-nats = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = "1"
+tokio-stream = "0.1"
