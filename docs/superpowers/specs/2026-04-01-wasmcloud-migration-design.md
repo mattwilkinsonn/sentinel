@@ -37,7 +37,7 @@ handle I/O. The Wasm components handle all business logic.
 
 ## System Topology
 
-```
+```text
 External Sources
 ────────────────────────────────────────────────────────
 Sui Fullnode (gRPC)   Discord API   EVE World API   Dashboard
@@ -79,7 +79,7 @@ threat-engine   api-handler   publisher   name-resolver   world-api-client   dem
 | `threat-engine` | Consume events, compute threat scores, write profiles to KV, publish score updates | JetStream `sentinel.events` (durable pull consumer) |
 | `api-handler` | Serve `GET /api/data`, `GET /api/health`; delegate SSE to `sse-bridge` | HTTP request via `http-server` provider |
 | `publisher` | Read dirty profiles from KV, batch on-chain publish to Sui ThreatRegistry | JetStream `sentinel.publish-tick` (30s scheduled tick) |
-| `name-resolver` | Resolve character names, write to names KV. Uses World API (HTTP) where available; for IDs requiring Sui gRPC object lookups, publishes to `sentinel.name-requests` — `sui-bridge` handles the gRPC call and writes the result directly to `sentinel.names` KV. | JetStream `sentinel.name-tick` (10s scheduled tick) |
+| `name-resolver` | Resolve character names, write to names KV. Uses World API (HTTP) where available; for IDs requiring Sui gRPC, publishes to `sentinel.name-requests` — `sui-bridge` handles the gRPC call and writes results to `sentinel.names` KV | JetStream `sentinel.name-tick` (10s scheduled tick) |
 | `world-api-client` | Fetch system names, tribe data, type metadata from World API, write to KV | JetStream `sentinel.name-tick` (shares tick with name-resolver) |
 | `demo-generator` | Publish realistic fake events for dashboard testing without live chain | Standalone, publishes to `sentinel.events` |
 
@@ -87,7 +87,7 @@ threat-engine   api-handler   publisher   name-resolver   world-api-client   dem
 
 | Server | Responsibility | WIT interface |
 |---|---|---|
-| `sui-bridge` | Connect to Sui gRPC checkpoint stream, parse killmails/bounties/gate events, publish to JetStream. Handles auto-reconnect. Also subscribes to `sentinel.name-requests` and resolves character names via gRPC object lookups, writing results to `sentinel.names` KV. | Producer + `sentinel.name-requests` consumer |
+| `sui-bridge` | Connect to Sui gRPC checkpoint stream, parse killmails/bounties/gate events, publish to JetStream. Handles auto-reconnect. Also subscribes to `sentinel.name-requests` and resolves character names via gRPC object lookups, writing results to `sentinel.names` KV | Producer + `sentinel.name-requests` consumer |
 | `discord-bridge` | Run Serenity Discord bot, handle slash commands by reading NATS KV directly, subscribe to `sentinel.alerts` for CRITICAL notifications | Implements `sentinel:notifications/alerts` |
 | `sse-bridge` | Manage persistent SSE connections, subscribe to `sentinel.scores` JetStream, fan out score updates to connected dashboard clients | Implements `sentinel:sse/server` |
 
@@ -95,6 +95,7 @@ threat-engine   api-handler   publisher   name-resolver   world-api-client   dem
 
 These three subsystems require native Rust async runtimes that cannot run inside a
 Wasm sandbox:
+
 - `sui-bridge`: long-lived bidirectional gRPC stream with custom reconnection logic
 - `discord-bridge`: Serenity async bot runtime
 - `sse-bridge`: persistent HTTP push connections
@@ -197,8 +198,8 @@ interface server {
 | `SENTINEL_EVENTS` | `sentinel.events` | limits | 24h | 5000 | Raw ingested events. Consumed by `threat-engine` (durable pull consumer, competing consumer group for scale). Also readable by `api-handler` for event history. |
 | `SENTINEL_SCORES` | `sentinel.scores` | limits | 1h | — | Score update notifications. Consumed by `sse-bridge` for SSE fan-out. |
 | `SENTINEL_ALERTS` | `sentinel.alerts` | limits | 1h | — | CRITICAL threshold crossings. Consumed by `discord-bridge`. |
-| `SENTINEL_TICKS` | `sentinel.publish-tick` + `sentinel.name-tick` | limits | 5m | — | Scheduled heartbeats triggering `publisher` (30s) and `name-resolver` (10s). Published by NATS scheduled producers. |
-| `SENTINEL_NAME_REQUESTS` | `sentinel.name-requests` | workqueue | 1m | — | Name resolution requests from `name-resolver` that require Sui gRPC. Consumed exclusively by `sui-bridge`, which writes results to `sentinel.names` KV. |
+| `SENTINEL_TICKS` | `sentinel.publish-tick` + `sentinel.name-tick` | limits | 5m | — | Scheduled heartbeats triggering `publisher` (30s) and `name-resolver` (10s). |
+| `SENTINEL_NAME_REQUESTS` | `sentinel.name-requests` | workqueue | 1m | — | Name resolution requests requiring Sui gRPC. Consumed exclusively by `sui-bridge`, which writes results to `sentinel.names` KV. |
 
 `SENTINEL_EVENTS` with `max_msgs: 5000` replaces the `VecDeque<RawEvent>` ring buffer.
 JetStream drops the oldest message when the limit is hit, exactly like the current
@@ -212,49 +213,65 @@ distribution automatically.
 
 **`sentinel.profiles`** — one entry per pilot
 
-```
-key:   "pilot:{item_id}"
-value: JSON {
-  item_id: u64, name: string, threat_score: u8,
-  kills: u32, deaths: u32, bounty_count: u32,
-  systems_visited: u32, last_kill_ts: u64,
-  tier: string, titles: string[],
-  tribe_id: u64 | null, tribe_name: string | null,
-  dirty: bool   // set by threat-engine, cleared by publisher after on-chain batch
+```json
+{
+  "item_id": 1234567890,
+  "name": "SomeCharacter",
+  "threat_score": 85,
+  "kills": 42,
+  "deaths": 3,
+  "bounty_count": 2,
+  "systems_visited": 7,
+  "last_kill_ts": 1775000000,
+  "tier": "CRITICAL",
+  "titles": ["Apex Predator"],
+  "tribe_id": null,
+  "tribe_name": null,
+  "dirty": true
 }
 ```
 
+Key format: `pilot:{item_id}` — e.g. `pilot:1234567890`
+
+The `dirty` flag is set by `threat-engine` and cleared by `publisher` after a
+successful on-chain batch.
+
 **`sentinel.names`** — character name cache
-```
-key:   "name:{item_id}"
-value: "{character_name}"
+
+```text
+key:   name:{item_id}
+value: SomeCharacterName
 ```
 
 **`sentinel.systems`** — system metadata cache
-```
-key:   "system:{system_id}"
-value: JSON { name: string, region: string, security_class: string }
+
+```text
+key:   system:{system_id}
+value: {"name":"Jita","region":"The Forge","security_class":"high"}
 ```
 
 **`sentinel.cache.types`** — structure type name cache
-```
-key:   "type:{type_id}"
-value: "{type_name}"
+
+```text
+key:   type:{type_id}
+value: Ishtar
 ```
 
 **`sentinel.discord`** — alert channel config (replaces `discord_alert_channels` table)
-```
-key:   "guild:{guild_id}"
-value: "{channel_id}"
+
+```text
+key:   guild:{guild_id}
+value: {channel_id}
 ```
 
 **`sentinel.meta`** — aggregate stats and publisher cursor
-```
-key:   "stats.aggregate"
-value: JSON { total_kills: u32, total_pilots: u32, last_updated_ts: u64 }
 
-key:   "publisher.cursor"
-value: "{last_published_checkpoint}"
+```text
+key:   stats.aggregate
+value: {"total_kills":1200,"total_pilots":340,"last_updated_ts":1775000000}
+
+key:   publisher.cursor
+value: {last_published_checkpoint}
 ```
 
 ### No PostgreSQL
@@ -321,7 +338,8 @@ wasmCloud emits distributed OTel traces across the entire lattice automatically.
 No instrumentation code needed in components.
 
 **Trace path for a killmail event:**
-```
+
+```text
 sui-bridge: publish to sentinel.events
   └─ threat-engine: handle message
        ├─ keyvalue-nats: get profile
@@ -403,31 +421,31 @@ cluster to manage.
 
 ## Directory Structure
 
-```
+```text
 sentinel/
 └── wasmcloud-prototype/
     ├── wit/
-    │   ├── sentinel-ingestion.wit     # sentinel:ingestion/types
-    │   ├── sentinel-notifications.wit # sentinel:notifications/alerts
-    │   └── sentinel-sse.wit           # sentinel:sse/server
+    │   ├── sentinel-ingestion.wit      # sentinel:ingestion/types
+    │   ├── sentinel-notifications.wit  # sentinel:notifications/alerts
+    │   └── sentinel-sse.wit            # sentinel:sse/server
     ├── components/
-    │   ├── threat-engine/             # Rust Wasm component
-    │   ├── api-handler/               # Rust Wasm component
-    │   ├── publisher/                 # Rust Wasm component
-    │   ├── name-resolver/             # Rust Wasm component
-    │   ├── world-api-client/          # Rust Wasm component
-    │   └── demo-generator/            # Rust Wasm component
+    │   ├── threat-engine/              # Rust Wasm component
+    │   ├── api-handler/                # Rust Wasm component
+    │   ├── publisher/                  # Rust Wasm component
+    │   ├── name-resolver/              # Rust Wasm component
+    │   ├── world-api-client/           # Rust Wasm component
+    │   └── demo-generator/             # Rust Wasm component
     ├── servers/
-    │   ├── sui-bridge/                # Standalone Rust binary (wRPC server)
-    │   ├── discord-bridge/            # Standalone Rust binary (wRPC server)
-    │   └── sse-bridge/                # Standalone Rust binary (wRPC server)
-    ├── sentinel.wadm.yaml             # Declarative application manifest
-    ├── cosmonic/                      # Cosmonic CRD translations
+    │   ├── sui-bridge/                 # Standalone Rust binary (wRPC server)
+    │   ├── discord-bridge/             # Standalone Rust binary (wRPC server)
+    │   └── sse-bridge/                 # Standalone Rust binary (wRPC server)
+    ├── sentinel.wadm.yaml              # Declarative application manifest
+    ├── cosmonic/                       # Cosmonic CRD translations
     │   ├── threat-engine.yaml
     │   ├── api-handler.yaml
     │   └── ...
-    ├── otel-config.yaml               # OTel Collector config (local)
-    └── docker-compose.yml             # Local dev environment
+    ├── otel-config.yaml                # OTel Collector config (local)
+    └── docker-compose.yml              # Local dev environment
 ```
 
 ---
@@ -438,12 +456,14 @@ Gaps in the wasmCloud ecosystem identified during this design, planned as upstre
 contributions:
 
 ### 1. `secrets-aws` backend
+
 Implement an AWS Secrets Manager secrets backend following the wasmCloud secrets
 protocol (XKey encryption, `wasmcloud.secrets.v1alpha1.<name>.get` NATS subjects,
 JWKS-based auth). Currently documented as an example in wasmCloud docs but no
 implementation exists. Would complement `secrets-vault` and `secrets-kubernetes`.
 
 ### 2. `grpc-client` capability provider
+
 A first-party wasmCloud provider exposing a `wasi:grpc/client` (or `wasmcloud:grpc`)
 WIT interface for making gRPC calls from Wasm components. Would eliminate the need
 for `sui-bridge` as a custom wRPC server — the gRPC stream would become a standard
@@ -451,11 +471,13 @@ provider link. Significant ecosystem value for any blockchain or internal servic
 integration.
 
 ### 3. `sse-server` capability provider
+
 A first-party provider handling persistent SSE connections, exposing a
 `wasmcloud:sse/server` WIT interface. Complements `http-server` for push-based
 transports. Would eliminate `sse-bridge`.
 
 ### 4. `wasmcloud:notifications` provider
+
 A generalised notification/alert dispatch provider with pluggable backends (Discord,
 Slack, email, webhook). Would expose a `wasmcloud:notifications/alerts` WIT interface
 and eliminate `discord-bridge`. The `sentinel:notifications/alerts` interface designed
