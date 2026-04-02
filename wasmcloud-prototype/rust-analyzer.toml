@@ -1,0 +1,6 @@
+# Enable build script execution so tonic/prost codegen works in sui-bridge
+[cargo]
+buildScripts.enable = true
+
+# Use default (native) target for analysis — Wasm components won't get full
+# analysis but the servers (which have the build scripts) will work correctly

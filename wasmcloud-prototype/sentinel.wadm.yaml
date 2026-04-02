@@ -1,0 +1,241 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: sentinel
+  annotations:
+    version: v0.1.0
+    description: "Sentinel — EVE Frontier Threat Intelligence (wasmCloud prototype)"
+spec:
+  components:
+    # ─── Wasm Components ───────────────────────────────────────────────────────
+
+    - name: threat-engine
+      type: component
+      properties:
+        image: file://./target/wasm32-wasip2/release/threat_engine.wasm
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 3
+        - type: link
+          properties:
+            target: nats-messaging
+            namespace: wasmcloud
+            package: messaging
+            interfaces:
+              - consumer
+            source_config:
+              - name: threat-engine-sub
+                properties:
+                  subscriptions: sentinel.events
+        - type: link
+          properties:
+            target: nats-kv
+            namespace: wasi
+            package: keyvalue
+            interfaces:
+              - store
+            target_config:
+              - name: sentinel-profiles-kv
+                properties:
+                  bucket: sentinel-profiles
+
+    - name: api-handler
+      type: component
+      properties:
+        image: file://./target/wasm32-wasip2/release/api_handler.wasm
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 2
+        - type: link
+          properties:
+            target: http-server
+            namespace: wasi
+            package: http
+            interfaces:
+              - incoming-handler
+            source_config:
+              - name: api-handler-http
+                properties:
+                  address: 0.0.0.0:8080
+        - type: link
+          properties:
+            target: nats-kv
+            namespace: wasi
+            package: keyvalue
+            interfaces:
+              - store
+            target_config:
+              - name: sentinel-profiles-kv
+                properties:
+                  bucket: sentinel-profiles
+
+    - name: publisher
+      type: component
+      properties:
+        image: file://./target/wasm32-wasip2/release/publisher.wasm
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+        - type: link
+          properties:
+            target: nats-messaging
+            namespace: wasmcloud
+            package: messaging
+            interfaces:
+              - consumer
+            source_config:
+              - name: publisher-sub
+                properties:
+                  subscriptions: sentinel.publish-tick
+        - type: link
+          properties:
+            target: nats-kv
+            namespace: wasi
+            package: keyvalue
+            interfaces:
+              - store
+            target_config:
+              - name: sentinel-profiles-kv
+                properties:
+                  bucket: sentinel-profiles
+        - type: link
+          properties:
+            target: http-client
+            namespace: wasi
+            package: http
+            interfaces:
+              - outgoing-handler
+
+    - name: name-resolver
+      type: component
+      properties:
+        image: file://./target/wasm32-wasip2/release/name_resolver.wasm
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+        - type: link
+          properties:
+            target: nats-messaging
+            namespace: wasmcloud
+            package: messaging
+            interfaces:
+              - consumer
+            source_config:
+              - name: name-resolver-sub
+                properties:
+                  subscriptions: sentinel.name-tick
+        - type: link
+          properties:
+            target: nats-kv
+            namespace: wasi
+            package: keyvalue
+            interfaces:
+              - store
+            target_config:
+              - name: sentinel-profiles-kv
+                properties:
+                  bucket: sentinel-profiles
+        - type: link
+          properties:
+            target: http-client
+            namespace: wasi
+            package: http
+            interfaces:
+              - outgoing-handler
+
+    - name: world-api-client
+      type: component
+      properties:
+        image: file://./target/wasm32-wasip2/release/world_api_client.wasm
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+        - type: link
+          properties:
+            target: nats-kv
+            namespace: wasi
+            package: keyvalue
+            interfaces:
+              - store
+            target_config:
+              - name: sentinel-systems-kv
+                properties:
+                  bucket: sentinel-systems
+        - type: link
+          properties:
+            target: http-client
+            namespace: wasi
+            package: http
+            interfaces:
+              - outgoing-handler
+
+    - name: demo-generator
+      type: component
+      properties:
+        image: file://./target/wasm32-wasip2/release/demo_generator.wasm
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+        - type: link
+          properties:
+            target: nats-messaging
+            namespace: wasmcloud
+            package: messaging
+            interfaces:
+              - consumer
+            source_config:
+              - name: demo-generator-sub
+                properties:
+                  subscriptions: sentinel.demo-tick
+
+    # ─── Capability Providers ──────────────────────────────────────────────────
+
+    - name: nats-messaging
+      type: capability
+      properties:
+        image: ghcr.io/wasmcloud/messaging-nats:0.23.1
+        config:
+          - name: nats-connection
+            properties:
+              cluster_uris: nats://nats:4222
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+
+    - name: nats-kv
+      type: capability
+      properties:
+        image: ghcr.io/wasmcloud/keyvalue-nats:0.3.1
+        config:
+          - name: nats-kv-connection
+            properties:
+              cluster_uris: nats://nats:4222
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+
+    - name: http-server
+      type: capability
+      properties:
+        image: ghcr.io/wasmcloud/http-server:0.23.2
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+
+    - name: http-client
+      type: capability
+      properties:
+        image: ghcr.io/wasmcloud/http-client:0.12.1
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1

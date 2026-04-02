@@ -10,6 +10,29 @@ updates:
     schedule:
       interval: "daily"
 
+  - package-ecosystem: "cargo"
+    directory: "/wasmcloud-prototype"
+    schedule:
+      interval: "daily"
+    groups:
+      wasm-runtime:
+        patterns:
+          - "wit-bindgen"
+          - "wasi"
+          - "wasmcloud-component"
+      grpc:
+        patterns:
+          - "tonic*"
+          - "prost*"
+      nats:
+        patterns:
+          - "async-nats"
+
+  - package-ecosystem: "docker"
+    directory: "/wasmcloud-prototype"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:

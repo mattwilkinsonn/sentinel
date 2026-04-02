@@ -166,6 +166,109 @@ test:
 [parallel]
 build: contracts-build backend-build frontend-build
 
+# === wasmCloud Prototype ===
+
+# Run all wasmCloud tests (threat-engine scoring + server unit tests)
+wc-test:
+    cd wasmcloud-prototype && cargo test -p threat-engine -p sui-bridge -p discord-bridge -p sse-bridge
+
+# Check all wasmCloud components and servers compile
+wc-check:
+    cd wasmcloud-prototype && cargo check -p sui-bridge -p discord-bridge -p sse-bridge
+    cd wasmcloud-prototype && cargo check -p threat-engine -p api-handler -p publisher -p name-resolver -p world-api-client -p demo-generator --target wasm32-wasip2
+
+# Build a single Wasm component with wash (e.g. just wc-build-component threat-engine)
+wc-build-component name:
+    cd wasmcloud-prototype/components/{{name}} && wash build --skip-fetch
+
+# Build all Wasm components with wash build
+wc-build-components:
+    cd wasmcloud-prototype/components/threat-engine && wash build --skip-fetch
+    cd wasmcloud-prototype/components/api-handler && wash build --skip-fetch
+    cd wasmcloud-prototype/components/publisher && wash build --skip-fetch
+    cd wasmcloud-prototype/components/name-resolver && wash build --skip-fetch
+    cd wasmcloud-prototype/components/world-api-client && wash build --skip-fetch
+    cd wasmcloud-prototype/components/demo-generator && wash build --skip-fetch
+
+# Build all bridge servers (native)
+wc-build-servers:
+    cd wasmcloud-prototype && cargo build --release -p sui-bridge -p discord-bridge -p sse-bridge
+
+# Build everything (components + servers)
+wc-build: wc-build-components wc-build-servers
+
+# Format wasmCloud Rust code
+wc-fmt:
+    cd wasmcloud-prototype && cargo fmt --all
+
+# Start observability stack (OTel + Jaeger)
+wc-otel:
+    cd wasmcloud-prototype && docker compose up otel-collector jaeger -d
+
+# Start bridge servers in Docker
+wc-bridges:
+    cd wasmcloud-prototype && docker compose up sui-bridge discord-bridge sse-bridge -d
+
+# Start everything: build, then run all services in mprocs
+wc-up: wc-build
+    mprocs \
+      --names "otel,jaeger,sui-bridge,discord-bridge,sse-bridge,wasmcloud-host" \
+      "cd wasmcloud-prototype && docker compose up otel-collector" \
+      "cd wasmcloud-prototype && docker compose up jaeger" \
+      "cd wasmcloud-prototype && cargo run -p sui-bridge" \
+      "cd wasmcloud-prototype && cargo run -p discord-bridge" \
+      "cd wasmcloud-prototype && cargo run -p sse-bridge" \
+      "wash host"
+
+# Stop everything
+wc-down:
+    cd wasmcloud-prototype && docker compose down
+
+# Stop everything and wipe volumes
+wc-reset:
+    cd wasmcloud-prototype && docker compose down -v
+
+# View bridge server logs
+wc-logs *args="":
+    cd wasmcloud-prototype && docker compose logs {{args}}
+
+# Follow logs for a specific service (e.g. just wc-log sui-bridge)
+wc-log service:
+    cd wasmcloud-prototype && docker compose logs -f {{service}}
+
+# Inspect a built component (e.g. just wc-inspect threat-engine)
+wc-inspect name:
+    wash inspect wasmcloud-prototype/target/wasm32-wasip2/release/$(echo {{name}} | tr '-' '_').wasm
+
+# Run sui-bridge locally (not in Docker)
+wc-run-sui:
+    cd wasmcloud-prototype && cargo run -p sui-bridge
+
+# Run discord-bridge locally
+wc-run-discord:
+    cd wasmcloud-prototype && cargo run -p discord-bridge
+
+# Run sse-bridge locally
+wc-run-sse:
+    cd wasmcloud-prototype && cargo run -p sse-bridge
+
+# Run demo generator tick locally (publishes one tick to NATS)
+wc-demo-tick:
+    nats pub sentinel.demo-tick '{}'
+
+# Hot-reload dev loop for a single component (starts embedded host + NATS)
+# Good for iterating on one component at a time (e.g. just wc-dev threat-engine)
+wc-dev name:
+    cd wasmcloud-prototype/components/{{name}} && wash dev
+
+# Run a standalone wasmCloud host (connects to NATS on localhost:4222)
+wc-host:
+    wash host
+
+# Open Jaeger tracing UI
+wc-traces:
+    open http://localhost:16686
+
 # === Deploy ===
 
 # Deploy to AWS (production)

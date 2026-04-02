@@ -21,7 +21,7 @@ production backend.
 
 ## Approach
 
-**Approach B — wRPC Server Model (Fully Experimental)**
+### Approach B — wRPC Server Model (Fully Experimental)**
 
 All capability providers are standalone processes (wRPC servers or containers), not
 host plugins. The wasmCloud host is purely a Wasm runtime and NATS lattice participant.
@@ -75,7 +75,7 @@ threat-engine   api-handler   publisher   name-resolver   world-api-client   dem
 ### Wasm Components
 
 | Component | Responsibility | Triggered by |
-|---|---|---|
+| --- | --- | --- |
 | `threat-engine` | Consume events, compute threat scores, write profiles to KV, publish score updates | JetStream `sentinel.events` (durable pull consumer) |
 | `api-handler` | Serve `GET /api/data`, `GET /api/health`; delegate SSE to `sse-bridge` | HTTP request via `http-server` provider |
 | `publisher` | Read dirty profiles from KV, batch on-chain publish to Sui ThreatRegistry | JetStream `sentinel.publish-tick` (30s scheduled tick) |
@@ -86,7 +86,7 @@ threat-engine   api-handler   publisher   name-resolver   world-api-client   dem
 ### wRPC Servers
 
 | Server | Responsibility | WIT interface |
-|---|---|---|
+| --- | --- | --- |
 | `sui-bridge` | Connect to Sui gRPC checkpoint stream, parse killmails/bounties/gate events, publish to JetStream. Handles auto-reconnect. Also subscribes to `sentinel.name-requests` and resolves character names via gRPC object lookups, writing results to `sentinel.names` KV | Producer + `sentinel.name-requests` consumer |
 | `discord-bridge` | Run Serenity Discord bot, handle slash commands by reading NATS KV directly, subscribe to `sentinel.alerts` for CRITICAL notifications | Implements `sentinel:notifications/alerts` |
 | `sse-bridge` | Manage persistent SSE connections, subscribe to `sentinel.scores` JetStream, fan out score updates to connected dashboard clients | Implements `sentinel:sse/server` |
@@ -110,7 +110,7 @@ They would be standard first-party providers if those providers existed. See
 ### Standard interfaces (existing)
 
 | Interface | Provider | Used by |
-|---|---|---|
+| --- | --- | --- |
 | `wasi:http/incoming-handler` | http-server | api-handler |
 | `wasi:http/outgoing-handler` | http-client | publisher, name-resolver, world-api-client |
 | `wasi:keyvalue/store` + `atomics` | keyvalue-nats | all components |
@@ -194,7 +194,7 @@ interface server {
 ### JetStream Streams
 
 | Stream | Subject | Retention | Max Age | Max Msgs | Purpose |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `SENTINEL_EVENTS` | `sentinel.events` | limits | 24h | 5000 | Raw ingested events. Consumed by `threat-engine` (durable pull consumer, competing consumer group for scale). Also readable by `api-handler` for event history. |
 | `SENTINEL_SCORES` | `sentinel.scores` | limits | 1h | — | Score update notifications. Consumed by `sse-bridge` for SSE fan-out. |
 | `SENTINEL_ALERTS` | `sentinel.alerts` | limits | 1h | — | CRITICAL threshold crossings. Consumed by `discord-bridge`. |
@@ -302,7 +302,7 @@ hosts by wadm.
 ## Health Checks
 
 | Current | wasmCloud equivalent |
-|---|---|
+| --- | --- |
 | `/api/health` ECS check | Same endpoint, served by `api-handler` component |
 | DB sync loop | Gone — writes are immediate via keyvalue provider |
 | gRPC reconnect health | `sui-bridge` container liveness probe (Docker/K8s) |
@@ -319,7 +319,7 @@ Zero additional infrastructure. Appropriate for a prototype.
 **Secrets defined:**
 
 | Secret | Scoping | Used by |
-|---|---|---|
+| --- | --- | --- |
 | `sui-publisher-key` | Entity-scoped | `publisher` component |
 | `discord-bot-token` | Entity-scoped | `discord-bridge` wRPC server |
 

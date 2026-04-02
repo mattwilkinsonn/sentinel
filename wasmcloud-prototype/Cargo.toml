@@ -39,11 +39,28 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-nats = "0.38"
 
 # gRPC (sui-bridge only)
-tonic = "0.13"
+tonic = { version = "0.13", features = ["tls-webpki-roots", "transport"] }
 prost = "0.13"
+prost-types = "0.13"
 
 # Discord (discord-bridge only)
 serenity = { version = "0.12", features = ["client", "gateway", "rustls_backend", "model"] }
 
 # HTTP server (sse-bridge only)
 axum = "0.8"
+
+# Shared across servers
+anyhow = "1"
+bytes = "1"
+futures = "0.3"
+tokio-stream = "0.1"
+async-stream = "0.3"
+
+# Build dependencies (sui-bridge)
+tonic-build = "0.13"
+prost-build = "0.13"
+
+# Test dependencies (sse-bridge)
+tower = "0.5"
+http = "1"
+http-body-util = "0.1"

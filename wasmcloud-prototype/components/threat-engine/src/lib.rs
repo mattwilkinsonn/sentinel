@@ -249,3 +249,265 @@ fn earned_titles(p: &ThreatProfile) -> Vec<&'static str> {
     if kd >= 3.0 && p.kill_count >= 5 { titles.push("Efficient Killer"); }
     titles
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(f: impl FnOnce(&mut ThreatProfile)) -> ThreatProfile {
+        let mut p = ThreatProfile::default();
+        f(&mut p);
+        p
+    }
+
+    // ─── compute_score ──────────────────────────────────────────────────
+
+    #[test]
+    fn score_zero_for_blank_profile() {
+        let p = ThreatProfile::default();
+        // Only kill_factor contributes: log2(1) * 300 = 0
+        assert_eq!(compute_score(&p), 0);
+    }
+
+    #[test]
+    fn score_increases_with_kills() {
+        let low = profile(|p| p.kill_count = 1);
+        let high = profile(|p| p.kill_count = 20);
+        assert!(compute_score(&high) > compute_score(&low));
+    }
+
+    #[test]
+    fn score_increases_with_recent_kills() {
+        let base = profile(|p| {
+            p.kill_count = 5;
+            p.recent_kills_24h = 0;
+        });
+        let hot = profile(|p| {
+            p.kill_count = 5;
+            p.recent_kills_24h = 5;
+        });
+        assert!(compute_score(&hot) > compute_score(&base));
+    }
+
+    #[test]
+    fn score_capped_at_10000() {
+        let maxed = profile(|p| {
+            p.kill_count = 1000;
+            p.recent_kills_24h = 100;
+            p.bounty_count = 100;
+            p.systems_visited = 100;
+        });
+        assert_eq!(compute_score(&maxed), 10000);
+    }
+
+    #[test]
+    fn score_kd_factor_uses_deaths_floor_of_one() {
+        // With 0 deaths, kd = kill_count / 1 (not division by zero)
+        let p = profile(|p| p.kill_count = 10);
+        let score = compute_score(&p);
+        assert!(score > 0);
+    }
+
+    #[test]
+    fn score_bounty_factor_capped_at_1000() {
+        let a = profile(|p| p.bounty_count = 3);
+        let b = profile(|p| p.bounty_count = 100);
+        // Both should have bounty_factor = 999 and 1000 respectively
+        let diff = compute_score(&b) - compute_score(&a);
+        assert!(diff <= 1); // capped, so negligible difference
+    }
+
+    #[test]
+    fn score_movement_factor_capped_at_500() {
+        let a = profile(|p| p.systems_visited = 5);
+        let b = profile(|p| p.systems_visited = 50);
+        let diff = compute_score(&b) - compute_score(&a);
+        assert_eq!(diff, 0); // both hit the cap
+    }
+
+    // ─── threat_tier ────────────────────────────────────────────────────
+
+    #[test]
+    fn tier_boundaries() {
+        assert_eq!(threat_tier(0), "LOW");
+        assert_eq!(threat_tier(2500), "LOW");
+        assert_eq!(threat_tier(2501), "MODERATE");
+        assert_eq!(threat_tier(5000), "MODERATE");
+        assert_eq!(threat_tier(5001), "HIGH");
+        assert_eq!(threat_tier(7500), "HIGH");
+        assert_eq!(threat_tier(7501), "CRITICAL");
+        assert_eq!(threat_tier(10000), "CRITICAL");
+    }
+
+    // ─── earned_titles ──────────────────────────────────────────────────
+
+    #[test]
+    fn no_titles_for_blank_profile() {
+        let p = ThreatProfile::default();
+        assert!(earned_titles(&p).is_empty());
+    }
+
+    #[test]
+    fn serial_killer_requires_10_kills_and_low_deaths() {
+        let yes = profile(|p| { p.kill_count = 10; p.death_count = 2; });
+        let no = profile(|p| { p.kill_count = 10; p.death_count = 3; });
+        assert!(earned_titles(&yes).contains(&"Serial Killer"));
+        assert!(!earned_titles(&no).contains(&"Serial Killer"));
+    }
+
+    #[test]
+    fn apex_predator_at_50_kills() {
+        let p = profile(|p| p.kill_count = 50);
+        assert!(earned_titles(&p).contains(&"Apex Predator"));
+    }
+
+    #[test]
+    fn untouchable_requires_5_kills_zero_deaths() {
+        let yes = profile(|p| { p.kill_count = 5; p.death_count = 0; });
+        let no = profile(|p| { p.kill_count = 5; p.death_count = 1; });
+        assert!(earned_titles(&yes).contains(&"Untouchable"));
+        assert!(!earned_titles(&no).contains(&"Untouchable"));
+    }
+
+    #[test]
+    fn rampage_at_5_recent_kills() {
+        let p = profile(|p| p.recent_kills_24h = 5);
+        assert!(earned_titles(&p).contains(&"Rampage"));
+    }
+
+    #[test]
+    fn bounty_magnet_at_1_bounty() {
+        let p = profile(|p| p.bounty_count = 1);
+        assert!(earned_titles(&p).contains(&"Bounty Magnet"));
+    }
+
+    #[test]
+    fn most_wanted_at_3_bounties() {
+        let p = profile(|p| p.bounty_count = 3);
+        let titles = earned_titles(&p);
+        assert!(titles.contains(&"Most Wanted"));
+        assert!(titles.contains(&"Bounty Magnet"));
+    }
+
+    #[test]
+    fn ghost_requires_5_systems_zero_kills() {
+        let yes = profile(|p| { p.systems_visited = 5; p.kill_count = 0; });
+        let no = profile(|p| { p.systems_visited = 5; p.kill_count = 1; });
+        assert!(earned_titles(&yes).contains(&"Ghost"));
+        assert!(!earned_titles(&no).contains(&"Ghost"));
+    }
+
+    #[test]
+    fn nomad_and_cartographer() {
+        let nomad = profile(|p| p.systems_visited = 10);
+        let carto = profile(|p| p.systems_visited = 20);
+        assert!(earned_titles(&nomad).contains(&"Nomad"));
+        assert!(!earned_titles(&nomad).contains(&"Cartographer"));
+        assert!(earned_titles(&carto).contains(&"Cartographer"));
+    }
+
+    #[test]
+    fn gate_threat_and_public_enemy() {
+        let gate = profile(|p| p.threat_score = 7500);
+        let public = profile(|p| p.threat_score = 9000);
+        assert!(earned_titles(&gate).contains(&"Gate Threat"));
+        assert!(!earned_titles(&gate).contains(&"Public Enemy"));
+        assert!(earned_titles(&public).contains(&"Public Enemy"));
+    }
+
+    #[test]
+    fn frequent_victim() {
+        let yes = profile(|p| { p.death_count = 10; p.kill_count = 2; });
+        let no = profile(|p| { p.death_count = 10; p.kill_count = 3; });
+        assert!(earned_titles(&yes).contains(&"Frequent Victim"));
+        assert!(!earned_titles(&no).contains(&"Frequent Victim"));
+    }
+
+    #[test]
+    fn warrior_requires_5_kills_and_5_deaths() {
+        let p = profile(|p| { p.kill_count = 5; p.death_count = 5; });
+        assert!(earned_titles(&p).contains(&"Warrior"));
+    }
+
+    #[test]
+    fn efficient_killer_requires_3_kd_and_5_kills() {
+        let yes = profile(|p| { p.kill_count = 15; p.death_count = 5; }); // kd = 3.0
+        let no = profile(|p| { p.kill_count = 14; p.death_count = 5; }); // kd = 2.8
+        assert!(earned_titles(&yes).contains(&"Efficient Killer"));
+        assert!(!earned_titles(&no).contains(&"Efficient Killer"));
+    }
+
+    // ─── Event deserialization ───────────────────────────────────────────
+
+    #[test]
+    fn deserialize_kill_event() {
+        let json = r#"{"type":"kill","victim_id":100,"attacker_ids":[200,201],"system_id":"J-1042","timestamp":1000,"ship_type_id":42}"#;
+        let event: ThreatEvent = serde_json::from_str(json).unwrap();
+        match event {
+            ThreatEvent::Kill(k) => {
+                assert_eq!(k.victim_id, 100);
+                assert_eq!(k.attacker_ids, vec![200, 201]);
+                assert_eq!(k.system_id, "J-1042");
+            }
+            _ => panic!("expected Kill"),
+        }
+    }
+
+    #[test]
+    fn deserialize_bounty_event() {
+        let json = r#"{"type":"bounty","target_id":100,"poster_id":200,"amount_mist":5000,"timestamp":1000}"#;
+        let event: ThreatEvent = serde_json::from_str(json).unwrap();
+        match event {
+            ThreatEvent::Bounty(b) => {
+                assert_eq!(b.target_id, 100);
+                assert_eq!(b.poster_id, 200);
+                assert_eq!(b.amount_mist, 5000);
+            }
+            _ => panic!("expected Bounty"),
+        }
+    }
+
+    #[test]
+    fn deserialize_gate_event() {
+        let json = r#"{"type":"gate","pilot_id":100,"gate_object_id":"0xabc","permitted":true,"timestamp":1000}"#;
+        let event: ThreatEvent = serde_json::from_str(json).unwrap();
+        match event {
+            ThreatEvent::Gate(g) => {
+                assert_eq!(g.pilot_id, 100);
+                assert!(g.permitted);
+            }
+            _ => panic!("expected Gate"),
+        }
+    }
+
+    // ─── ScoreUpdate / ThreatAlert serialization ────────────────────────
+
+    #[test]
+    fn score_update_serializes() {
+        let update = ScoreUpdate {
+            pilot_id: 42,
+            name: Some("TestPilot".into()),
+            threat_score: 5000,
+            tier: "MODERATE",
+            titles: vec!["Bounty Magnet"],
+        };
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["pilot_id"], 42);
+        assert_eq!(json["tier"], "MODERATE");
+        assert_eq!(json["titles"][0], "Bounty Magnet");
+    }
+
+    #[test]
+    fn threat_alert_serializes() {
+        let alert = ThreatAlert {
+            pilot_id: 42,
+            pilot_name: "TestPilot".into(),
+            threat_score: 8000,
+            tier: "CRITICAL",
+            system: "J-1042".into(),
+        };
+        let json = serde_json::to_value(&alert).unwrap();
+        assert_eq!(json["pilot_name"], "TestPilot");
+        assert_eq!(json["system"], "J-1042");
+    }
+}

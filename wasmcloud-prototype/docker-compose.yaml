@@ -1,0 +1,50 @@
+services:
+  # ─── Bridge Servers (standalone binaries) ────────────────────────────────
+
+  sui-bridge:
+    build:
+      context: .
+      dockerfile: servers/sui-bridge/Dockerfile
+    env_file: .env
+    environment:
+      NATS_URL: nats://localhost:4222
+      RUST_LOG: sui_bridge=info
+    network_mode: host
+
+  discord-bridge:
+    build:
+      context: .
+      dockerfile: servers/discord-bridge/Dockerfile
+    env_file: .env
+    environment:
+      NATS_URL: nats://localhost:4222
+      RUST_LOG: discord_bridge=info
+    network_mode: host
+
+  sse-bridge:
+    build:
+      context: .
+      dockerfile: servers/sse-bridge/Dockerfile
+    env_file: .env
+    environment:
+      NATS_URL: nats://localhost:4222
+      RUST_LOG: sse_bridge=info
+    network_mode: host
+
+  # ─── Observability ──────────────────────────────────────────────────────
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "14268:14268" # Accept Jaeger data
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
