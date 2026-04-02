@@ -1,0 +1,7 @@
+name = "publisher"
+language = "rust"
+type = "component"
+
+[component]
+wit_world = "publisher"
+wasm_target = "wasm32-wasip2"

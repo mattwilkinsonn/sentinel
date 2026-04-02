@@ -1,0 +1,7 @@
+name = "name-resolver"
+language = "rust"
+type = "component"
+
+[component]
+wit_world = "name-resolver"
+wasm_target = "wasm32-wasip2"

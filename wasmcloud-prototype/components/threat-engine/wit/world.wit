@@ -3,7 +3,6 @@ package sentinel:threat-engine@0.1.0;
 world threat-engine {
     // Consume events from sentinel.events JetStream
     import wasmcloud:messaging/consumer@0.2.0;
-    import wasmcloud:messaging/producer@0.2.0;
 
     // Read/write threat profiles and caches
     import wasi:keyvalue/store@0.2.0-draft;
