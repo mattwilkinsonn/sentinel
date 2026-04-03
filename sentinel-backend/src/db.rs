@@ -11,6 +11,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/005_structure_cache.sql"),
     include_str!("../migrations/006_nullable_profile_name.sql"),
     include_str!("../migrations/007_recent_deaths.sql"),
+    include_str!("../migrations/008_event_compound_index.sql"),
 ];
 
 /// Run all migrations on an existing pool.
@@ -178,6 +179,27 @@ pub async fn insert_event(pool: &PgPool, e: &RawEvent) -> Result<(), sqlx::Error
     Ok(())
 }
 
+/// Insert multiple events in a single query using UNNEST.
+pub async fn insert_events_batch(pool: &PgPool, events: &[RawEvent]) -> Result<(), sqlx::Error> {
+    if events.is_empty() {
+        return Ok(());
+    }
+    let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
+    let timestamps: Vec<i64> = events.iter().map(|e| e.timestamp_ms as i64).collect();
+    let data: Vec<&serde_json::Value> = events.iter().map(|e| &e.data).collect();
+
+    sqlx::query(
+        "INSERT INTO raw_events (event_type, timestamp_ms, data) \
+         SELECT * FROM UNNEST($1::text[], $2::bigint[], $3::jsonb[])",
+    )
+    .bind(&types)
+    .bind(&timestamps)
+    .bind(&data)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Save checkpoint cursor.
 pub async fn save_checkpoint(pool: &PgPool, checkpoint: u64) -> Result<(), sqlx::Error> {
     sqlx::query(
@@ -191,14 +213,24 @@ pub async fn save_checkpoint(pool: &PgPool, checkpoint: u64) -> Result<(), sqlx:
 }
 
 /// Prune old events, keeping only the most recent N.
+/// Uses a threshold ID to avoid full table scan.
 pub async fn prune_events(pool: &PgPool, keep: i64) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        "DELETE FROM raw_events WHERE id NOT IN \
-         (SELECT id FROM raw_events ORDER BY timestamp_ms DESC LIMIT $1)",
+    // Find the cutoff ID — everything below this gets deleted
+    let cutoff: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM raw_events ORDER BY timestamp_ms DESC OFFSET $1 LIMIT 1",
     )
     .bind(keep)
-    .execute(pool)
+    .fetch_optional(pool)
     .await?;
+
+    let Some(cutoff_id) = cutoff else {
+        return Ok(0); // fewer rows than `keep`, nothing to prune
+    };
+
+    let result = sqlx::query("DELETE FROM raw_events WHERE id <= $1")
+        .bind(cutoff_id)
+        .execute(pool)
+        .await?;
     Ok(result.rows_affected())
 }
 
