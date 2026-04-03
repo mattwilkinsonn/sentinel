@@ -81,28 +81,64 @@ export default $config({
     const domain = domainForStage($app.stage);
 
     // Postgres database (Neon serverless)
-    const db = new neon.Project("SentinelDb", {
-      name: `sentinel-${$app.stage}`,
-      orgId: env.neonOrgId,
-      historyRetentionSeconds: 21600,
-    });
+    // Production owns the Neon project; non-production stages use branches
+    // so they scale to zero when idle and share storage (copy-on-write).
+    let databaseUrl;
 
-    const dbBranchId = db.defaultBranchId;
+    if ($app.stage === "production") {
+      const db = new neon.Project("SentinelDb", {
+        name: "sentinel",
+        orgId: env.neonOrgId,
+        historyRetentionSeconds: 86400,
+      });
 
-    const dbRole = new neon.Role("SentinelDbRole", {
-      projectId: db.id,
-      branchId: dbBranchId,
-      name: "sentinel",
-    });
+      const dbRole = new neon.Role("SentinelDbRole", {
+        projectId: db.id,
+        branchId: db.defaultBranchId,
+        name: "sentinel",
+      });
 
-    const dbName = new neon.Database("SentinelDatabase", {
-      projectId: db.id,
-      branchId: dbBranchId,
-      name: "sentinel",
-      ownerName: dbRole.name,
-    });
+      const dbName = new neon.Database("SentinelDatabase", {
+        projectId: db.id,
+        branchId: db.defaultBranchId,
+        name: "sentinel",
+        ownerName: dbRole.name,
+      });
 
-    const databaseUrl = $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${db.databaseHost}/${dbName.name}?sslmode=require`;
+      databaseUrl = $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${db.databaseHost}/${dbName.name}?sslmode=require`;
+    } else {
+      // Dev/preview stages: branch off the production Neon project.
+      // The project ID is looked up from the production stage's outputs
+      // stored in SSM by the production deploy. This avoids a circular
+      // dependency and lets dev branches scale to zero independently.
+      const prodProjectId = new sst.aws.Secret("NeonProdProjectId");
+
+      const branch = new neon.Branch("SentinelDbBranch", {
+        projectId: prodProjectId.value,
+        name: `sentinel-${$app.stage}`,
+      });
+
+      const branchEndpoint = new neon.Endpoint("SentinelDbEndpoint", {
+        projectId: prodProjectId.value,
+        branchId: branch.id,
+        type: "read_write",
+      });
+
+      const dbRole = new neon.Role("SentinelDbRole", {
+        projectId: prodProjectId.value,
+        branchId: branch.id,
+        name: "sentinel",
+      });
+
+      const dbName = new neon.Database("SentinelDatabase", {
+        projectId: prodProjectId.value,
+        branchId: branch.id,
+        name: "sentinel",
+        ownerName: dbRole.name,
+      });
+
+      databaseUrl = $interpolate`postgresql://${dbRole.name}:${dbRole.password}@${branchEndpoint.host}/${dbName.name}?sslmode=require`;
+    }
 
     // VPC + ECS Cluster
     const vpc = new sst.aws.Vpc("SentinelVpc");
@@ -506,7 +542,6 @@ export default $config({
       domain,
       backendUrl: backend.url,
       frontendUrl: frontend.url,
-      databaseHost: db.databaseHost,
     };
   },
 });
