@@ -11,6 +11,8 @@ name: Deploy (production)
         required: true
       NEON_ORG_ID:
         required: true
+      PULUMI_ACCESS_TOKEN:
+        required: true
 
 concurrency:
   group: deploy-production
@@ -33,40 +35,51 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Install SST
-        run: curl -fsSL https://sst.dev/install | bash
-
-      - name: Cache SST providers
-        uses: actions/cache@v5
+      - name: Install Pulumi
+        uses: pulumi/actions@v6
         with:
-          path: infrastructure/.sst
-          key: sst-production-${{ hashFiles('infrastructure/sst.config.ts') }}
-          restore-keys: sst-production-
+          command: version
 
-      - name: Deploy
+      - name: Install dependencies
+        run: cd infrastructure && bun install
+
+      - name: Build frontend
         run: |
-          export PATH=$HOME/.sst/bin:$PATH
-          cd infrastructure && sst install && sst deploy --stage production
+          cd frontend && bun install && bun run build
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          VITE_API_URL: https://api.sentinel.zireael.dev
+          VITE_SUI_RPC_URL: https://fullnode.testnet.sui.io:443
+          VITE_WORLD_PACKAGE_ID: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c"
+          VITE_BUILDER_PACKAGE_ID: "0x2df819a1e5a5b21044931b2619cdb8e67d7ff0d22a138fabd94b18d73a795358"
+          VITE_EXTENSION_CONFIG_ID: "0xadcccc30fa3f13b084020ee72977268950d24047b653772335991cbace1f4194"
+          VITE_BOUNTY_BOARD_ID: "0x6fafed6fd8a529c404029addb34f5688f1cf8131aad5d92a3ab5de4036566288"
+
+      - name: Deploy with Pulumi
+        uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: sentinel/production
+          work-dir: infrastructure
+          config-map: '{"sentinel:imageTag":{"value":"${{ github.sha }}"},"sentinel:neonOrgId":{"value":"${{ secrets.NEON_ORG_ID }}"}}'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+
+      - name: Upload frontend to S3
+        run: |
+          BUCKET=$(cd infrastructure && pulumi stack output siteBucketName --stack sentinel/production)
+          CDN_ID=$(cd infrastructure && pulumi stack output cdnDistributionId --stack sentinel/production)
+          aws s3 sync frontend/dist "s3://$BUCKET" --delete
+          aws cloudfront create-invalidation --distribution-id "$CDN_ID" --paths "/*"
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       - name: Wait for ECS service to stabilize
         run: |
-          CLUSTER=$(aws resourcegroupstaggingapi get-resources \
-            --tag-filters Key=sst:app,Values=sentinel Key=sst:stage,Values=production \
-            --resource-type-filters ecs:cluster \
-            --query 'ResourceTagMappingList[0].ResourceARN' --output text)
-          SERVICE=$(aws resourcegroupstaggingapi get-resources \
-            --tag-filters Key=sst:app,Values=sentinel Key=sst:stage,Values=production \
-            --resource-type-filters ecs:service \
-            --query 'ResourceTagMappingList[0].ResourceARN' --output text)
-          echo "Cluster: $CLUSTER"
-          echo "Service: $SERVICE"
-
-          LOG_GROUP="/sst/sentinel/production/backend"
+          CLUSTER="sentinel-production"
+          SERVICE="sentinel-production-backend"
+          LOG_GROUP="/sentinel/production/backend"
           DEADLINE=$(( $(date +%s) + 600 ))
 
           while true; do
@@ -85,11 +98,6 @@ jobs:
             RUNNING=$(echo "$SVC_JSON" | jq -r '.runningCount')
             DESIRED=$(echo "$SVC_JSON" | jq -r '.desiredCount')
             echo "$(date -u +%H:%M:%S) rolloutState=$STATUS running=$RUNNING desired=$DESIRED"
-            echo "$SVC_JSON" | jq -r '
-              .deployments[] |
-              "  [\(.status)] taskDef=\(.taskDefinition | split("/")[-1])" +
-              " running=\(.runningCount) desired=\(.desiredCount)" +
-              " state=\(.rolloutState // "n/a")"'
 
             if [ "$STATUS" = "COMPLETED" ] && [ "$RUNNING" = "$DESIRED" ]; then
               echo "Service stable"
@@ -98,9 +106,7 @@ jobs:
 
             if [ "$STATUS" = "FAILED" ]; then
               echo "ECS deployment failed — printing logs"
-              echo "--- Recent CloudWatch logs ---"
               aws logs tail "$LOG_GROUP" --since 10m --format short || true
-              echo "--- Service events ---"
               aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
                 --query "services[0].events[:10]" --output table || true
               exit 1

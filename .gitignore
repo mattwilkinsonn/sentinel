@@ -15,9 +15,9 @@ sentinel-backend/target/
 # gRPC protos (cloned at build time)
 sentinel-backend/proto/
 
-# SST
-.sst/
-infrastructure/.sst/
+# Pulumi
+infrastructure/bin/
+infrastructure/node_modules/
 
 # Environment
 .env

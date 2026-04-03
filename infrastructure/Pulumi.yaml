@@ -1,0 +1,3 @@
+name: sentinel
+runtime: nodejs
+description: Sentinel infrastructure — ECS backend, static frontend, Neon Postgres, CloudWatch observability
