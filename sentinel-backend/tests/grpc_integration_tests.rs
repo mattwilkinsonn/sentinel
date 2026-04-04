@@ -33,11 +33,13 @@ async fn real_get_service_info() {
 async fn real_get_checkpoint() {
     let channel = testnet_channel().await;
 
-    // Get latest height, then fetch a recent checkpoint (old ones get pruned)
+    // Get latest height, then fetch a safely-lagged checkpoint.
+    // Use a large offset to avoid races where the reported height
+    // hasn't propagated to the node serving get_checkpoint yet.
     let height = sui_client::get_latest_checkpoint(channel.clone())
         .await
         .unwrap();
-    let target = height.saturating_sub(10);
+    let target = height.saturating_sub(100);
 
     let mut client = sui_rpc::ledger_service_client::LedgerServiceClient::new(channel);
     let resp = sui_client::get_checkpoint(&mut client, target)
@@ -119,8 +121,8 @@ async fn real_checkpoint_replay_processes_recent_events() {
     let mut client = sui_rpc::ledger_service_client::LedgerServiceClient::new(channel);
     let mut total_txs = 0u64;
 
-    let start = latest.saturating_sub(4);
-    for seq in start..=latest {
+    let start = latest.saturating_sub(104);
+    for seq in start..start + 5 {
         let resp = sui_client::get_checkpoint(&mut client, seq).await.unwrap();
         if let Some(cp) = resp.checkpoint {
             let tx_count = cp.transactions.len();
