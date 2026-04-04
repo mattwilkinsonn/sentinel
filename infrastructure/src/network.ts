@@ -64,7 +64,7 @@ export const cloudMapService = new aws.servicediscovery.Service(
 // ---------------------------------------------------------------------------
 const vpcLink = new aws.apigatewayv2.VpcLink("sentinel-vpc-link", {
   name: `sentinel-${stack}`,
-  subnetIds: vpc.publicSubnetIds,
+  subnetIds: vpc.privateSubnetIds,
   securityGroupIds: [vpcLinkSg.id],
 });
 

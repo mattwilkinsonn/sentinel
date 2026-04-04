@@ -33,11 +33,12 @@ const cert = new aws.acm.Certificate("sentinel-cert", {
 });
 
 const certVal = cert.domainValidationOptions.apply((opts) => opts[0]);
+// Strip trailing dots — ACM returns FQDNs with dots, Cloudflare rejects them
 const certValRecord = new cloudflare.DnsRecord("sentinel-cert-validation", {
   zoneId: zireaelZoneId,
-  name: certVal.apply((v) => v.resourceRecordName),
+  name: certVal.apply((v) => v.resourceRecordName.replace(/\.$/, "")),
   type: certVal.apply((v) => v.resourceRecordType),
-  content: certVal.apply((v) => v.resourceRecordValue),
+  content: certVal.apply((v) => v.resourceRecordValue.replace(/\.$/, "")),
   ttl: 60,
 });
 
@@ -45,8 +46,11 @@ const certValidated = new aws.acm.CertificateValidation(
   "sentinel-cert-validated",
   {
     certificateArn: cert.arn,
-    validationRecordFqdns: [certValRecord.name],
+    validationRecordFqdns: [
+      certVal.apply((v) => v.resourceRecordName.replace(/\.$/, "")),
+    ],
   },
+  { dependsOn: [certValRecord] },
 );
 
 // ---------------------------------------------------------------------------

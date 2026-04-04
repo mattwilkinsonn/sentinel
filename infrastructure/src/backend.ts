@@ -19,13 +19,16 @@ export const cluster = new aws.ecs.Cluster("sentinel-cluster", {
   settings: [{ name: "containerInsights", value: "enabled" }],
 });
 
-new aws.ecs.ClusterCapacityProviders("sentinel-capacity-providers", {
-  clusterName: cluster.name,
-  capacityProviders: ["FARGATE", "FARGATE_SPOT"],
-  defaultCapacityProviderStrategies: [
-    { capacityProvider: "FARGATE_SPOT", weight: 1 },
-  ],
-});
+const capacityProviders = new aws.ecs.ClusterCapacityProviders(
+  "sentinel-capacity-providers",
+  {
+    clusterName: cluster.name,
+    capacityProviders: ["FARGATE", "FARGATE_SPOT"],
+    defaultCapacityProviderStrategies: [
+      { capacityProvider: "FARGATE_SPOT", weight: 1 },
+    ],
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Log Group
@@ -164,21 +167,25 @@ const taskDef = new aws.ecs.TaskDefinition("sentinel-backend-task", {
 // ---------------------------------------------------------------------------
 // ECS Service
 // ---------------------------------------------------------------------------
-export const service = new aws.ecs.Service("sentinel-backend", {
-  name: `sentinel-${stack}-backend`,
-  cluster: cluster.arn,
-  taskDefinition: taskDef.arn,
-  desiredCount: 1,
-  capacityProviderStrategies: [{ capacityProvider: "FARGATE_SPOT", weight: 1 }],
-  networkConfiguration: {
-    subnets: vpc.publicSubnetIds,
-    securityGroups: [taskSg.id],
-    assignPublicIp: true,
+export const service = new aws.ecs.Service(
+  "sentinel-backend",
+  {
+    name: `sentinel-${stack}-backend`,
+    cluster: cluster.arn,
+    taskDefinition: taskDef.arn,
+    desiredCount: 1,
+    capacityProviderStrategies: [
+      { capacityProvider: "FARGATE_SPOT", weight: 1 },
+    ],
+    networkConfiguration: {
+      subnets: vpc.publicSubnetIds,
+      securityGroups: [taskSg.id],
+      assignPublicIp: true,
+    },
+    serviceRegistries: {
+      registryArn: cloudMapService.arn,
+    },
+    forceNewDeployment: true,
   },
-  serviceRegistries: {
-    registryArn: cloudMapService.arn,
-    containerName: "backend",
-    containerPort: 3001,
-  },
-  forceNewDeployment: true,
-});
+  { dependsOn: [capacityProviders] },
+);
