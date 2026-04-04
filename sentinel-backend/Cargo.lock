@@ -169,6 +169,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bcs"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "302fd2afb39688efc82f6138a68861b8f04f95be5faab2a06805a8a49f28deb6"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "bech32"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -592,7 +601,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1437,7 +1446,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2075,7 +2084,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2208,7 +2217,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64",
- "bcs",
+ "bcs 0.2.0",
  "bech32",
  "blake2b_simd",
  "chrono",
@@ -2472,7 +2481,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2734,7 +2743,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c1de70a3262b561b3ff0848e43b4feff41c3083e2744e0442c79cb2204e5fd2"
 dependencies = [
  "base64",
- "bcs",
+ "bcs 0.1.6",
  "bytes",
  "futures",
  "http",
@@ -2756,7 +2765,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fff64505eccf5b20b3f7f25b609ee176aeac93705187c31a9b8ba08ec93ada76"
 dependencies = [
  "base64ct",
- "bcs",
+ "bcs 0.1.6",
  "blake2",
  "bnum",
  "bs58",
@@ -2778,7 +2787,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5061ad0ad2585dc29558e6f65d9206a3342b8f1d2693b934530e22c958671c2d"
 dependencies = [
  "async-trait",
- "bcs",
+ "bcs 0.1.6",
  "futures",
  "serde",
  "sui-rpc",
@@ -2833,7 +2842,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
