@@ -7,6 +7,10 @@ name: Deploy (production)
         required: true
       CLOUDFLARE_API_TOKEN:
         required: true
+      NEON_API_KEY:
+        required: true
+      NEON_ORG_ID:
+        required: true
       PULUMI_ACCESS_TOKEN:
         required: true
 
@@ -33,6 +37,14 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
+      - name: Install Pulumi
+        uses: pulumi/actions@v6
+        with:
+          command: version
+
+      - name: Install Neon provider
+        run: cd infrastructure && pulumi package add terraform-provider kislerdm/neon
+
       - name: Install dependencies
         run: cd infrastructure && bun install
 
@@ -52,9 +64,10 @@ jobs:
           command: up
           stack-name: sentinel/production
           work-dir: infrastructure
-          config-map: '{"sentinel:imageTag":{"value":"${{ github.sha }}"}}'
+          config-map: '{"sentinel:imageTag":{"value":"${{ github.sha }}"},"sentinel:neonOrgId":{"value":"${{ secrets.NEON_ORG_ID }}"}}'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
       - name: Upload frontend to S3
         run: |
