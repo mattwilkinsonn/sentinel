@@ -1,5 +1,5 @@
 import * as pulumi from "@pulumi/pulumi";
-import { apiDomain, domain } from "./config";
+import { domain } from "./config";
 import { neonProjectId } from "./database";
 import "./network";
 import "./backend";
@@ -10,7 +10,7 @@ import "./observability";
 // Exports
 // ---------------------------------------------------------------------------
 export const domainName = domain;
-export const backendUrl = pulumi.interpolate`https://${apiDomain}`;
+export const backendUrl = pulumi.interpolate`https://${domain}/api`;
 export const frontendUrl = pulumi.interpolate`https://${domain}`;
 export const siteBucketName = siteBucket.bucket;
 export const cdnDistributionId = cdn.id;

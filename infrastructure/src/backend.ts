@@ -9,14 +9,22 @@ import {
   stack,
 } from "./config";
 import { databaseUrl } from "./database";
-import { httpsListener, targetGroup, taskSg, vpc } from "./network";
+import { cloudMapService, taskSg, vpc } from "./network";
 
 // ---------------------------------------------------------------------------
-// ECS Cluster
+// ECS Cluster (Fargate Spot)
 // ---------------------------------------------------------------------------
 export const cluster = new aws.ecs.Cluster("sentinel-cluster", {
   name: `sentinel-${stack}`,
   settings: [{ name: "containerInsights", value: "enabled" }],
+});
+
+new aws.ecs.ClusterCapacityProviders("sentinel-capacity-providers", {
+  clusterName: cluster.name,
+  capacityProviders: ["FARGATE", "FARGATE_SPOT"],
+  defaultCapacityProviderStrategies: [
+    { capacityProvider: "FARGATE_SPOT", weight: 1 },
+  ],
 });
 
 // ---------------------------------------------------------------------------
@@ -156,27 +164,21 @@ const taskDef = new aws.ecs.TaskDefinition("sentinel-backend-task", {
 // ---------------------------------------------------------------------------
 // ECS Service
 // ---------------------------------------------------------------------------
-export const service = new aws.ecs.Service(
-  "sentinel-backend",
-  {
-    name: `sentinel-${stack}-backend`,
-    cluster: cluster.arn,
-    taskDefinition: taskDef.arn,
-    desiredCount: 1,
-    launchType: "FARGATE",
-    networkConfiguration: {
-      subnets: vpc.privateSubnetIds,
-      securityGroups: [taskSg.id],
-      assignPublicIp: false,
-    },
-    loadBalancers: [
-      {
-        targetGroupArn: targetGroup.arn,
-        containerName: "backend",
-        containerPort: 3001,
-      },
-    ],
-    forceNewDeployment: true,
+export const service = new aws.ecs.Service("sentinel-backend", {
+  name: `sentinel-${stack}-backend`,
+  cluster: cluster.arn,
+  taskDefinition: taskDef.arn,
+  desiredCount: 1,
+  capacityProviderStrategies: [{ capacityProvider: "FARGATE_SPOT", weight: 1 }],
+  networkConfiguration: {
+    subnets: vpc.publicSubnetIds,
+    securityGroups: [taskSg.id],
+    assignPublicIp: true,
   },
-  { dependsOn: [httpsListener] },
-);
+  serviceRegistries: {
+    registryArn: cloudMapService.arn,
+    containerName: "backend",
+    containerPort: 3001,
+  },
+  forceNewDeployment: true,
+});
