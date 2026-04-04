@@ -439,7 +439,7 @@ async fn get_gas_coin(
                     "object_id".into(),
                     "version".into(),
                     "digest".into(),
-                    "content".into(),
+                    "contents".into(),
                 ],
             }),
             object_type: Some("0x2::coin::Coin<0x2::sui::SUI>".to_string()),
@@ -452,10 +452,10 @@ async fn get_gas_coin(
         .first()
         .ok_or("no gas coins — fund the publisher address with testnet SUI")?;
 
-    // Check balance from the coin's BCS content and warn if low
-    if let Some(ref content) = coin.content {
-        if let Some(ref bcs_data) = content.value {
-            // SUI Coin content is: id (32 bytes) + balance (u64 LE)
+    // Check balance from the coin's BCS contents and warn if low
+    if let Some(ref contents) = coin.contents {
+        if let Some(ref bcs_data) = contents.value {
+            // SUI Coin BCS layout: id (32 bytes) + balance (u64 LE)
             if bcs_data.len() >= 40 {
                 let balance = u64::from_le_bytes(bcs_data[32..40].try_into().unwrap_or_default());
                 if balance < GAS_BALANCE_WARN_THRESHOLD {
