@@ -1,3 +1,13 @@
 name: sentinel
-runtime: nodejs
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+main: src/
 description: Sentinel infrastructure — ECS backend, static frontend, Neon Postgres, CloudWatch observability
+packages:
+  neon:
+    source: pulumi/pulumi/terraform-provider
+    version: 1.1.1
+    parameters:
+      - kislerdm/neon

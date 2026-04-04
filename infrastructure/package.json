@@ -1,20 +1,29 @@
 {
   "name": "sentinel-infrastructure",
   "private": true,
-  "main": "index.ts",
+  "main": "src/index.ts",
   "scripts": {
     "preview": "pulumi preview",
     "up": "pulumi up",
-    "destroy": "pulumi destroy"
+    "destroy": "pulumi destroy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "biome check --write src/",
+    "lint": "biome lint src/",
+    "format": "biome format --write src/"
   },
   "dependencies": {
     "@pulumi/aws": "^7.24.0",
     "@pulumi/awsx": "^3.4.0",
     "@pulumi/cloudflare": "^6.14.0",
-    "@pulumi/pulumi": "^3.229.0"
+    "@pulumi/pulumi": "^3.229.0",
+    "@pulumi/neon": "file:sdks/neon"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.9",
+    "@types/node": "^22.0.0",
     "typescript": "^5.0.0",
-    "@types/node": "^22.0.0"
-  }
+    "vitest": "^4.1.2"
+  },
+  "trustedDependencies": ["@pulumi/neon"]
 }
