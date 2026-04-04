@@ -33,7 +33,7 @@ const cert = new aws.acm.Certificate("sentinel-cert", {
 });
 
 const certVal = cert.domainValidationOptions.apply((opts) => opts[0]);
-const certValRecord = new cloudflare.Record("sentinel-cert-validation", {
+const certValRecord = new cloudflare.DnsRecord("sentinel-cert-validation", {
   zoneId: zireaelZoneId,
   name: certVal.apply((v) => v.resourceRecordName),
   type: certVal.apply((v) => v.resourceRecordType),
@@ -143,7 +143,7 @@ new aws.s3.BucketPolicy("sentinel-frontend-policy", {
 });
 
 // Cloudflare DNS
-new cloudflare.Record("sentinel-dns", {
+new cloudflare.DnsRecord("sentinel-dns", {
   zoneId: zireaelZoneId,
   name: domain,
   type: "CNAME",

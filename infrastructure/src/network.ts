@@ -55,7 +55,7 @@ export const cloudMapService = new aws.servicediscovery.Service(
       dnsRecords: [{ ttl: 10, type: "A" }],
       routingPolicy: "MULTIVALUE",
     },
-    healthCheckCustomConfig: { failureThreshold: 1 },
+    healthCheckCustomConfig: {},
   },
 );
 

@@ -20,7 +20,7 @@ describe("config (dev stack)", () => {
   });
 
   it("derives correct domain for dev", () => {
-    expect(config.domain).toBe("pulumi-sentinel-dev.zireael.dev");
+    expect(config.domain).toBe("sentinel-dev.zireael.dev");
   });
 
   it("generates correct SSM ARN pattern", async () => {

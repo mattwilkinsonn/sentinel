@@ -2,18 +2,16 @@ import { describe, expect, it } from "vitest";
 import { domainForStack } from "./helpers";
 
 describe("domainForStack", () => {
-  it("returns production domain without stack suffix", () => {
-    expect(domainForStack("production")).toBe("pulumi-sentinel.zireael.dev");
+  it("returns production domain", () => {
+    expect(domainForStack("production")).toBe("sentinel.zireael.dev");
   });
 
   it("returns dev domain with stack suffix", () => {
-    expect(domainForStack("dev")).toBe("pulumi-sentinel-dev.zireael.dev");
+    expect(domainForStack("dev")).toBe("sentinel-dev.zireael.dev");
   });
 
   it("returns preview domain with stack suffix", () => {
-    expect(domainForStack("preview")).toBe(
-      "pulumi-sentinel-preview.zireael.dev",
-    );
+    expect(domainForStack("preview")).toBe("sentinel-preview.zireael.dev");
   });
 
   it("always produces a valid subdomain of zireael.dev", () => {
@@ -25,9 +23,7 @@ describe("domainForStack", () => {
   });
 
   it("prefixes non-production domains with sentinel-<stack>", () => {
-    expect(domainForStack("staging")).toBe(
-      "pulumi-sentinel-staging.zireael.dev",
-    );
-    expect(domainForStack("pr-42")).toBe("pulumi-sentinel-pr-42.zireael.dev");
+    expect(domainForStack("staging")).toBe("sentinel-staging.zireael.dev");
+    expect(domainForStack("pr-42")).toBe("sentinel-pr-42.zireael.dev");
   });
 });
