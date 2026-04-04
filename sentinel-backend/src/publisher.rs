@@ -417,7 +417,12 @@ async fn resolve_shared_initial_version(
         .ok_or_else(|| "shared object missing initial_shared_version".into())
 }
 
+/// Minimum gas balance (in MIST) before we warn. 1 SUI = 1_000_000_000 MIST.
+/// At ~8 publishes/hour × 0.5 SUI each ≈ 96 SUI/day, this is ~1 day of runway.
+const GAS_BALANCE_WARN_THRESHOLD: u64 = 100_000_000_000;
+
 /// Get a SUI gas coin for the given address via gRPC ListOwnedObjects.
+/// Logs a warning if the balance is below `GAS_BALANCE_WARN_THRESHOLD`.
 async fn get_gas_coin(
     channel: Channel,
     address: &str,
@@ -430,7 +435,12 @@ async fn get_gas_coin(
             page_size: Some(1),
             page_token: None,
             read_mask: Some(prost_types::FieldMask {
-                paths: vec!["object_id".into(), "version".into(), "digest".into()],
+                paths: vec![
+                    "object_id".into(),
+                    "version".into(),
+                    "digest".into(),
+                    "content".into(),
+                ],
             }),
             object_type: Some("0x2::coin::Coin<0x2::sui::SUI>".to_string()),
         })
@@ -441,6 +451,27 @@ async fn get_gas_coin(
         .objects
         .first()
         .ok_or("no gas coins — fund the publisher address with testnet SUI")?;
+
+    // Check balance from the coin's BCS content and warn if low
+    if let Some(ref content) = coin.content {
+        if let Some(ref bcs_data) = content.value {
+            // SUI Coin content is: id (32 bytes) + balance (u64 LE)
+            if bcs_data.len() >= 40 {
+                let balance = u64::from_le_bytes(bcs_data[32..40].try_into().unwrap_or_default());
+                if balance < GAS_BALANCE_WARN_THRESHOLD {
+                    tracing::warn!(
+                        balance_mist = balance,
+                        threshold_mist = GAS_BALANCE_WARN_THRESHOLD,
+                        address = %address,
+                        "LOW GAS BALANCE: {} MIST ({:.4} SUI) — fund publisher wallet {}",
+                        balance,
+                        balance as f64 / 1_000_000_000.0,
+                        address,
+                    );
+                }
+            }
+        }
+    }
 
     let id: Address = coin
         .object_id

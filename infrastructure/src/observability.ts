@@ -11,6 +11,12 @@ const alarmTopic = new aws.sns.Topic("sentinel-alarm-topic", {
   name: `sentinel-${stack}-alarms`,
 });
 
+new aws.sns.TopicSubscription("sentinel-alarm-email", {
+  topic: alarmTopic.arn,
+  protocol: "email",
+  endpoint: "matt@zireael.dev",
+});
+
 const errNs = `Sentinel/${stack}`;
 const errorFilter = new aws.cloudwatch.LogMetricFilter("app-error-filter", {
   name: `sentinel-${stack}-app-errors`,
@@ -42,6 +48,39 @@ new aws.cloudwatch.MetricAlarm(
     okActions: [alarmTopic.arn],
   },
   { dependsOn: [errorFilter] },
+);
+
+// Low gas balance warning — fires when the publisher logs LOW GAS BALANCE
+const gasFilter = new aws.cloudwatch.LogMetricFilter("low-gas-filter", {
+  name: `sentinel-${stack}-low-gas`,
+  logGroupName: logGroup.name,
+  pattern: '"LOW GAS BALANCE"',
+  metricTransformation: {
+    namespace: errNs,
+    name: "LowGasWarnings",
+    value: "1",
+    defaultValue: "0",
+    unit: "Count",
+  },
+});
+
+new aws.cloudwatch.MetricAlarm(
+  "low-gas-alarm",
+  {
+    name: `sentinel-${stack}-low-gas`,
+    alarmDescription:
+      "Publisher wallet gas balance is low — fund with testnet SUI",
+    namespace: errNs,
+    metricName: "LowGasWarnings",
+    statistic: "Sum",
+    period: 3600,
+    evaluationPeriods: 1,
+    threshold: 1,
+    comparisonOperator: "GreaterThanOrEqualToThreshold",
+    treatMissingData: "notBreaching",
+    alarmActions: [alarmTopic.arn],
+  },
+  { dependsOn: [gasFilter] },
 );
 
 new aws.cloudwatch.MetricAlarm("api-5xx-alarm", {
@@ -102,7 +141,7 @@ const dashboardBody = pulumi
     apiGateway.id,
     cluster.name,
     service.name,
-    pulumi.output(region).apply((r) => r.name),
+    pulumi.output(region).apply((r) => r.region),
   ])
   .apply(([apiId, ecsCluster, ecsSvc, reg]) => {
     return JSON.stringify({
