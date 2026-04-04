@@ -83,6 +83,25 @@ new aws.cloudwatch.MetricAlarm(
   { dependsOn: [gasFilter] },
 );
 
+new aws.cloudwatch.MetricAlarm("task-down-alarm", {
+  name: `sentinel-${stack}-task-down`,
+  alarmDescription:
+    "ECS running task count dropped to 0 — possible Spot interruption",
+  namespace: "AWS/ECS",
+  metricName: "RunningTaskCount",
+  statistic: "Minimum",
+  period: 60,
+  evaluationPeriods: 1,
+  threshold: 1,
+  comparisonOperator: "LessThanThreshold",
+  treatMissingData: "breaching",
+  dimensions: {
+    ClusterName: cluster.name,
+    ServiceName: service.name,
+  },
+  alarmActions: [alarmTopic.arn],
+});
+
 new aws.cloudwatch.MetricAlarm("api-5xx-alarm", {
   name: `sentinel-${stack}-api-5xx`,
   alarmDescription: "API Gateway returning 5xx errors",
