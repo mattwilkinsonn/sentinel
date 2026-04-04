@@ -323,9 +323,11 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
         let s = state.read().await;
         s.live.gate_name_cache.keys().cloned().collect()
     };
+    let mut last_prune = tokio::time::Instant::now();
+    let mut last_checkpoint: Option<u64> = None;
 
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
 
         // Collect dirty profiles and new events under a short lock
         let (dirty_profiles, new_events, checkpoint) = {
@@ -356,24 +358,47 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
             (dirty, new, s.last_checkpoint)
         };
 
-        // Write outside the lock
-        for p in &dirty_profiles {
-            if let Err(e) = db::upsert_profile(&pool, p).await {
-                tracing::warn!(character_id = p.character_item_id, error = %e, "Failed to persist profile {}: {e}", p.character_item_id);
+        // Skip DB writes entirely if nothing changed
+        let has_new_events = !new_events.is_empty();
+        let has_dirty_profiles = !dirty_profiles.is_empty();
+        let checkpoint_changed = checkpoint != last_checkpoint;
+
+        if !has_dirty_profiles && !has_new_events && !checkpoint_changed {
+            // Still check for gate names and pruning below
+        } else {
+            // Write outside the lock
+            for p in &dirty_profiles {
+                if let Err(e) = db::upsert_profile(&pool, p).await {
+                    tracing::warn!(character_id = p.character_item_id, error = %e, "Failed to persist profile {}: {e}", p.character_item_id);
+                }
             }
-        }
 
-        for e in &new_events {
-            if let Err(e) = db::insert_event(&pool, e).await {
-                tracing::warn!(error = %e, "Failed to persist event: {e}");
+            // Batch insert events instead of one-by-one
+            if has_new_events {
+                if let Err(e) = db::insert_events_batch(&pool, &new_events).await {
+                    tracing::warn!(error = %e, "Failed to batch insert {} events: {e}", new_events.len());
+                }
             }
-        }
 
-        last_event_count += new_events.len();
+            last_event_count += new_events.len();
 
-        if let Some(cp) = checkpoint {
-            if let Err(e) = db::save_checkpoint(&pool, cp).await {
-                tracing::warn!(error = %e, "Failed to save checkpoint: {e}");
+            if checkpoint_changed {
+                if let Some(cp) = checkpoint {
+                    if let Err(e) = db::save_checkpoint(&pool, cp).await {
+                        tracing::warn!(error = %e, "Failed to save checkpoint: {e}");
+                    }
+                    last_checkpoint = Some(cp);
+                }
+            }
+
+            if has_dirty_profiles || has_new_events {
+                tracing::info!(
+                    profiles = dirty_profiles.len(),
+                    events = new_events.len(),
+                    "DB sync: {} profiles, {} events flushed",
+                    dirty_profiles.len(),
+                    new_events.len()
+                );
             }
         }
 
@@ -391,23 +416,14 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
             }
         }
 
-        // Prune old events every cycle
-        if last_event_count > 500 {
+        // Prune old events every 5 minutes instead of every cycle
+        if last_event_count > 500 && last_prune.elapsed() > std::time::Duration::from_secs(300) {
             if let Ok(pruned) = db::prune_events(&pool, 1000).await {
                 if pruned > 0 {
                     tracing::debug!(pruned, "Pruned {pruned} old events from database");
                 }
             }
-        }
-
-        if !dirty_profiles.is_empty() || !new_events.is_empty() {
-            tracing::info!(
-                profiles = dirty_profiles.len(),
-                events = new_events.len(),
-                "DB sync: {} profiles, {} events flushed",
-                dirty_profiles.len(),
-                new_events.len()
-            );
+            last_prune = tokio::time::Instant::now();
         }
     }
 }

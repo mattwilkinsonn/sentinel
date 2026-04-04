@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["frontend/src/**", "ts-scripts/**", "infrastructure/**"],
+    "includes": ["frontend/src/**", "ts-scripts/**", "infrastructure/src/**"],
     "ignoreUnknown": true
   },
   "css": {
