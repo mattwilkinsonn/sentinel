@@ -13,7 +13,6 @@ describe("infrastructure (dev stack)", () => {
 
   beforeAll(async () => {
     await setupPulumiMocks("dev");
-    // Import order matters — modules have cross-dependencies
     network = await import("./network");
     backend = await import("./backend");
     frontend = await import("./frontend");
@@ -21,47 +20,24 @@ describe("infrastructure (dev stack)", () => {
   });
 
   describe("network", () => {
-    it("creates a VPC with 2 availability zones", async () => {
+    it("creates a VPC", () => {
       expect(network.vpc).toBeDefined();
     });
 
-    it("ALB is internet-facing", async () => {
-      const internal = await outputValue(network.alb.internal);
-      expect(internal).toBe(false);
-    });
-
-    it("ALB is an application load balancer", async () => {
-      const type = await outputValue(network.alb.loadBalancerType);
-      expect(type).toBe("application");
-    });
-
-    it("target group uses port 3001", async () => {
-      const port = await outputValue(network.targetGroup.port);
-      expect(port).toBe(3001);
-    });
-
-    it("target group health checks /api/health", async () => {
-      const hc = await outputValue(network.targetGroup.healthCheck);
-      expect(hc.path).toBe("/api/health");
-    });
-
-    it("HTTPS listener is on port 443", async () => {
-      const port = await outputValue(network.httpsListener.port);
-      expect(port).toBe(443);
-    });
-
-    it("ALB security group allows HTTP and HTTPS ingress", async () => {
-      const ingress = await outputValue(network.albSg.ingress);
-      const ports = ingress?.map((r: { fromPort: number }) => r.fromPort);
-      expect(ports).toContain(80);
-      expect(ports).toContain(443);
-    });
-
-    it("task security group only allows port 3001 from ALB", async () => {
+    it("task security group allows port 3001 from VPC link SG", async () => {
       const ingress = await outputValue(network.taskSg.ingress);
       expect(ingress).toHaveLength(1);
       expect(ingress?.[0].fromPort).toBe(3001);
       expect(ingress?.[0].toPort).toBe(3001);
+    });
+
+    it("creates an API Gateway HTTP API", async () => {
+      const protocol = await outputValue(network.apiGateway.protocolType);
+      expect(protocol).toBe("HTTP");
+    });
+
+    it("creates Cloud Map service discovery", () => {
+      expect(network.cloudMapService).toBeDefined();
     });
   });
 
@@ -89,9 +65,12 @@ describe("infrastructure (dev stack)", () => {
       expect(name).toBe("/sentinel/dev/backend");
     });
 
-    it("service runs on Fargate", async () => {
-      const launch = await outputValue(backend.service.launchType);
-      expect(launch).toBe("FARGATE");
+    it("service uses Fargate Spot", async () => {
+      const strategies = await outputValue(
+        backend.service.capacityProviderStrategies,
+      );
+      expect(strategies).toHaveLength(1);
+      expect(strategies?.[0].capacityProvider).toBe("FARGATE_SPOT");
     });
 
     it("service has exactly 1 desired task", async () => {
@@ -102,6 +81,17 @@ describe("infrastructure (dev stack)", () => {
     it("service is named sentinel-dev-backend", async () => {
       const name = await outputValue(backend.service.name);
       expect(name).toBe("sentinel-dev-backend");
+    });
+
+    it("service uses public subnets with public IP", async () => {
+      const netConfig = await outputValue(backend.service.networkConfiguration);
+      expect(netConfig?.assignPublicIp).toBe(true);
+    });
+
+    it("service registers with Cloud Map", async () => {
+      const registries = await outputValue(backend.service.serviceRegistries);
+      expect(registries?.containerPort).toBe(3001);
+      expect(registries?.containerName).toBe("backend");
     });
   });
 
@@ -118,6 +108,21 @@ describe("infrastructure (dev stack)", () => {
     it("CDN is enabled", async () => {
       const enabled = await outputValue(frontend.cdn.enabled);
       expect(enabled).toBe(true);
+    });
+
+    it("CDN has two origins (s3 + api)", async () => {
+      const origins = await outputValue(frontend.cdn.origins);
+      expect(origins).toHaveLength(2);
+      const ids = origins?.map((o: { originId: string }) => o.originId);
+      expect(ids).toContain("s3");
+      expect(ids).toContain("api");
+    });
+
+    it("CDN routes /api/* to API Gateway origin", async () => {
+      const behaviors = await outputValue(frontend.cdn.orderedCacheBehaviors);
+      expect(behaviors).toHaveLength(1);
+      expect(behaviors?.[0].pathPattern).toBe("/api/*");
+      expect(behaviors?.[0].targetOriginId).toBe("api");
     });
 
     it("CDN uses redirect-to-https viewer policy", async () => {

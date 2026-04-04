@@ -49,7 +49,7 @@ jobs:
       - name: Build frontend
         run: cd frontend && bun install && bun run build
         env:
-          VITE_API_URL: https://api.pulumi.sentinel.zireael.dev
+          VITE_API_URL: /api
           VITE_SUI_RPC_URL: https://fullnode.testnet.sui.io:443
           VITE_WORLD_PACKAGE_ID: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c"
           VITE_BUILDER_PACKAGE_ID: "0x2df819a1e5a5b21044931b2619cdb8e67d7ff0d22a138fabd94b18d73a795358"

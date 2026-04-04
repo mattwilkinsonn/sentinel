@@ -40,6 +40,11 @@ export async function setupPulumiMocks(stack = "dev") {
           state.outputs = { neonProjectId: "mock-neon-project-id" };
         }
 
+        // API Gateway needs an apiEndpoint for CloudFront origin
+        if (args.type === "aws:apigatewayv2/api:Api") {
+          state.apiEndpoint = `https://mock-api.execute-api.us-east-1.amazonaws.com`;
+        }
+
         return { id: `mock-${args.name}`, state };
       },
     },

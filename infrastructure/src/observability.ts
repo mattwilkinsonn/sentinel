@@ -2,7 +2,7 @@ import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import { cluster, logGroup, service } from "./backend";
 import { stack } from "./config";
-import { alb } from "./network";
+import { apiGateway } from "./network";
 
 // ---------------------------------------------------------------------------
 // CloudWatch Observability
@@ -44,52 +44,50 @@ new aws.cloudwatch.MetricAlarm(
   { dependsOn: [errorFilter] },
 );
 
-const albArnSuffix = alb.arnSuffix;
-
-new aws.cloudwatch.MetricAlarm("backend-5xx-alarm", {
-  name: `sentinel-${stack}-5xx-errors`,
-  alarmDescription: "Backend returning 5xx errors",
-  namespace: "AWS/ApplicationELB",
-  metricName: "HTTPCode_Target_5XX_Count",
+new aws.cloudwatch.MetricAlarm("api-5xx-alarm", {
+  name: `sentinel-${stack}-api-5xx`,
+  alarmDescription: "API Gateway returning 5xx errors",
+  namespace: "AWS/ApiGateway",
+  metricName: "5xx",
   statistic: "Sum",
   period: 300,
   evaluationPeriods: 2,
   threshold: 10,
   comparisonOperator: "GreaterThanOrEqualToThreshold",
   treatMissingData: "notBreaching",
-  dimensions: { LoadBalancer: albArnSuffix },
+  dimensions: { ApiId: apiGateway.id },
   alarmActions: [alarmTopic.arn],
   okActions: [alarmTopic.arn],
 });
 
-new aws.cloudwatch.MetricAlarm("backend-4xx-alarm", {
-  name: `sentinel-${stack}-4xx-errors`,
+new aws.cloudwatch.MetricAlarm("api-4xx-alarm", {
+  name: `sentinel-${stack}-api-4xx`,
   alarmDescription: "Elevated 4xx client errors",
-  namespace: "AWS/ApplicationELB",
-  metricName: "HTTPCode_Target_4XX_Count",
+  namespace: "AWS/ApiGateway",
+  metricName: "4xx",
   statistic: "Sum",
   period: 300,
   evaluationPeriods: 3,
   threshold: 50,
   comparisonOperator: "GreaterThanOrEqualToThreshold",
   treatMissingData: "notBreaching",
-  dimensions: { LoadBalancer: albArnSuffix },
+  dimensions: { ApiId: apiGateway.id },
   alarmActions: [alarmTopic.arn],
   okActions: [alarmTopic.arn],
 });
 
-new aws.cloudwatch.MetricAlarm("alb-5xx-alarm", {
-  name: `sentinel-${stack}-alb-5xx`,
-  alarmDescription: "ALB returning 5xx — targets may be down",
-  namespace: "AWS/ApplicationELB",
-  metricName: "HTTPCode_ELB_5XX_Count",
-  statistic: "Sum",
-  period: 60,
+new aws.cloudwatch.MetricAlarm("api-latency-alarm", {
+  name: `sentinel-${stack}-api-latency`,
+  alarmDescription: "API Gateway p99 latency elevated",
+  namespace: "AWS/ApiGateway",
+  metricName: "Latency",
+  extendedStatistic: "p99",
+  period: 300,
   evaluationPeriods: 3,
-  threshold: 5,
+  threshold: 5000,
   comparisonOperator: "GreaterThanOrEqualToThreshold",
   treatMissingData: "notBreaching",
-  dimensions: { LoadBalancer: albArnSuffix },
+  dimensions: { ApiId: apiGateway.id },
   alarmActions: [alarmTopic.arn],
   okActions: [alarmTopic.arn],
 });
@@ -101,12 +99,12 @@ const region = aws.getRegion();
 
 const dashboardBody = pulumi
   .all([
-    albArnSuffix,
+    apiGateway.id,
     cluster.name,
     service.name,
     pulumi.output(region).apply((r) => r.name),
   ])
-  .apply(([albSuffix, ecsCluster, ecsSvc, reg]) => {
+  .apply(([apiId, ecsCluster, ecsSvc, reg]) => {
     return JSON.stringify({
       widgets: [
         {
@@ -116,28 +114,21 @@ const dashboardBody = pulumi
           width: 12,
           height: 6,
           properties: {
-            title: "HTTP 5xx / 4xx Errors",
+            title: "API 5xx / 4xx Errors",
             region: reg,
             metrics: [
               [
-                "AWS/ApplicationELB",
-                "HTTPCode_Target_5XX_Count",
-                "LoadBalancer",
-                albSuffix,
+                "AWS/ApiGateway",
+                "5xx",
+                "ApiId",
+                apiId,
                 { stat: "Sum", color: "#d62728", label: "5xx" },
               ],
               [
-                "AWS/ApplicationELB",
-                "HTTPCode_ELB_5XX_Count",
-                "LoadBalancer",
-                albSuffix,
-                { stat: "Sum", color: "#9467bd", label: "ALB 5xx" },
-              ],
-              [
-                "AWS/ApplicationELB",
-                "HTTPCode_Target_4XX_Count",
-                "LoadBalancer",
-                albSuffix,
+                "AWS/ApiGateway",
+                "4xx",
+                "ApiId",
+                apiId,
                 { stat: "Sum", color: "#ff7f0e", label: "4xx" },
               ],
             ],
@@ -157,10 +148,10 @@ const dashboardBody = pulumi
             region: reg,
             metrics: [
               [
-                "AWS/ApplicationELB",
-                "RequestCount",
-                "LoadBalancer",
-                albSuffix,
+                "AWS/ApiGateway",
+                "Count",
+                "ApiId",
+                apiId,
                 { stat: "Sum", label: "Requests" },
               ],
             ],
@@ -175,21 +166,21 @@ const dashboardBody = pulumi
           width: 12,
           height: 6,
           properties: {
-            title: "Response Time (p99 / avg)",
+            title: "API Latency (p99 / avg)",
             region: reg,
             metrics: [
               [
-                "AWS/ApplicationELB",
-                "TargetResponseTime",
-                "LoadBalancer",
-                albSuffix,
+                "AWS/ApiGateway",
+                "Latency",
+                "ApiId",
+                apiId,
                 { stat: "p99", label: "p99" },
               ],
               [
-                "AWS/ApplicationELB",
-                "TargetResponseTime",
-                "LoadBalancer",
-                albSuffix,
+                "AWS/ApiGateway",
+                "Latency",
+                "ApiId",
+                apiId,
                 { stat: "Average", label: "avg" },
               ],
             ],
@@ -204,25 +195,25 @@ const dashboardBody = pulumi
           width: 12,
           height: 6,
           properties: {
-            title: "Healthy / Unhealthy Targets",
+            title: "Integration Latency (p99 / avg)",
             region: reg,
             metrics: [
               [
-                "AWS/ApplicationELB",
-                "HealthyHostCount",
-                "LoadBalancer",
-                albSuffix,
-                { stat: "Average", color: "#2ca02c", label: "Healthy" },
+                "AWS/ApiGateway",
+                "IntegrationLatency",
+                "ApiId",
+                apiId,
+                { stat: "p99", label: "p99" },
               ],
               [
-                "AWS/ApplicationELB",
-                "UnHealthyHostCount",
-                "LoadBalancer",
-                albSuffix,
-                { stat: "Average", color: "#d62728", label: "Unhealthy" },
+                "AWS/ApiGateway",
+                "IntegrationLatency",
+                "ApiId",
+                apiId,
+                { stat: "Average", label: "avg" },
               ],
             ],
-            period: 60,
+            period: 300,
             view: "timeSeries",
           },
         },

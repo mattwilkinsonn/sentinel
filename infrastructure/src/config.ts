@@ -45,7 +45,6 @@ export const CHAIN_IDS = {
 };
 
 export const domain = domainForStack(stack);
-export const apiDomain = `api.${domain}`;
 
 // SSM parameter ARNs for secrets (created manually, never in code)
 // Setup: aws ssm put-parameter --name /sentinel/<stack>/sui-publisher-key --type SecureString --value <key>
