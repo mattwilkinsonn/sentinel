@@ -327,7 +327,32 @@ const dashboardBody = pulumi
           type: "metric",
           x: 0,
           y: 18,
-          width: 24,
+          width: 12,
+          height: 6,
+          properties: {
+            title: "Running Tasks (Spot interruptions show as dips)",
+            region: reg,
+            metrics: [
+              [
+                "AWS/ECS",
+                "RunningTaskCount",
+                "ClusterName",
+                ecsCluster,
+                "ServiceName",
+                ecsSvc,
+                { stat: "Minimum", color: "#2ca02c", label: "Running" },
+              ],
+            ],
+            period: 60,
+            view: "timeSeries",
+            yAxis: { left: { min: 0, max: 2 } },
+          },
+        },
+        {
+          type: "metric",
+          x: 12,
+          y: 18,
+          width: 12,
           height: 6,
           properties: {
             title: "Application Errors (ERROR log level)",
