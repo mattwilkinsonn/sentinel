@@ -151,9 +151,7 @@ async fn insert_and_load_events() {
         },
     ];
 
-    for e in &events {
-        sentinel_backend::db::insert_event(&pool, e).await.unwrap();
-    }
+    sentinel_backend::db::insert_events_batch(&pool, &events).await.unwrap();
 
     let mut store = sentinel_backend::types::DataStore::default();
     sentinel_backend::db::load_into(&pool, &mut store)
@@ -205,13 +203,13 @@ async fn prune_events_keeps_most_recent() {
     common::setup(&pool).await;
 
     for i in 0..10 {
-        sentinel_backend::db::insert_event(
+        sentinel_backend::db::insert_events_batch(
             &pool,
-            &sentinel_backend::types::RawEvent {
+            &[sentinel_backend::types::RawEvent {
                 event_type: "kill".into(),
                 timestamp_ms: i * 1000,
                 data: serde_json::json!({"seq": i}),
-            },
+            }],
         )
         .await
         .unwrap();

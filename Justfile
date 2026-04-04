@@ -57,6 +57,8 @@ backend-test:
 
 # Run backend integration tests (requires Postgres)
 backend-test-integration: db
+    @echo "Waiting for Postgres to be ready..."
+    @until docker compose exec -T postgres pg_isready -U sentinel > /dev/null 2>&1; do sleep 1; done
     cd sentinel-backend && cargo test --test db_integration --test graphql_mock_tests --test grpc_mock_tests --test logging
 
 # Run integration tests against real Sui testnet (gRPC + GraphQL)
@@ -168,17 +170,13 @@ build: contracts-build backend-build frontend-build
 
 # === Deploy ===
 
-# Deploy to AWS (production)
-deploy:
-    cd infrastructure && sst deploy --stage production
+# Preview infrastructure changes (production)
+deploy-preview:
+    cd infrastructure && pulumi preview -s Zireael/sentinel/production
 
-# Deploy to AWS (dev/staging)
-deploy-dev:
-    cd infrastructure && sst deploy --stage dev
-
-# Remove deployment
-deploy-remove stage="dev":
-    cd infrastructure && sst remove --stage {{stage}}
+# Preview infrastructure changes (dev)
+deploy-preview-dev:
+    cd infrastructure && pulumi preview -s Zireael/sentinel/dev
 
 # === Dev ===
 

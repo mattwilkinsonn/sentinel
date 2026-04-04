@@ -115,7 +115,7 @@ responsive immediately on startup.
 | Discord Bot     | Serenity (Rust)                                |
 | Database        | PostgreSQL 16 (Neon prod, Docker dev)          |
 | Frontend        | Solid.js, TailwindCSS 4, Vite                  |
-| Infrastructure  | AWS ECS Fargate, CloudFront, SST               |
+| Infrastructure  | AWS ECS Fargate Spot, API Gateway, CloudFront, Pulumi |
 | CI/CD           | GitHub Actions                                 |
 | Linting         | Biome (TS), rustfmt (Rust), Prettier (Move)    |
 
@@ -211,7 +211,7 @@ sentinel/
       ThreatLeaderboard.tsx  # Threat leaderboard
       views/                 # Sub-views (feed, pilots, kills, systems)
   ts-scripts/          # Admin scripts
-  infrastructure/      # SST deployment config
+  infrastructure/      # Pulumi IaC (TypeScript)
   .github/workflows/   # CI/CD pipeline
 ```
 
@@ -363,12 +363,16 @@ direction that shaped the system:
 docker compose up --build
 ```
 
-### AWS (SST)
+### AWS (Pulumi)
+
+Deploys automatically via GitHub Actions on push to `main` (production)
+and `dev` (dev environment). Infrastructure is defined in
+`infrastructure/src/` using Pulumi TypeScript.
 
 ```bash
-just deploy-dev   # Deploy to dev stage
-just deploy       # Deploy to production
+just deploy-preview      # Preview production changes
+just deploy-preview-dev  # Preview dev changes
 ```
 
-Requires AWS credentials and GitHub secrets configured.
-See `infrastructure/sst.config.ts` for resource definitions.
+Requires Pulumi Cloud access token and AWS/Cloudflare/Neon secrets
+configured in GitHub Actions.

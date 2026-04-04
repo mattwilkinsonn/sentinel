@@ -1205,6 +1205,13 @@ pub async fn resolve_gate_name(
 }
 
 /// Final pass: sort events, recompute 24h kills and threat scores.
+///
+/// Only overwrites `recent_kills_24h` / `recent_deaths_24h` for profiles where
+/// the event buffer has enough data to produce a meaningful count. For profiles
+/// whose kills have aged out of the capped ring buffer, the DB-loaded value is
+/// kept — this prevents the oscillation bug where `finalize()` zeros a count
+/// that the live gRPC stream then increments back, causing the publisher to
+/// ping-pong scores.
 async fn finalize(state: &Arc<RwLock<AppState>>) {
     let mut s = state.write().await;
 
@@ -1218,7 +1225,7 @@ async fn finalize(state: &Arc<RwLock<AppState>>) {
         .sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
 
     let now_ms = chrono::Utc::now().timestamp_millis() as u64;
-    let day_ago = now_ms.saturating_sub(604_800_000); // 7 days
+    let day_ago = now_ms.saturating_sub(86_400_000); // 24 hours
 
     let mut kill_counts_24h: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
     let mut death_counts_24h: std::collections::HashMap<u64, u64> =
@@ -1235,14 +1242,16 @@ async fn finalize(state: &Arc<RwLock<AppState>>) {
     }
 
     for p in s.live.profiles.values_mut() {
-        p.recent_kills_24h = kill_counts_24h
-            .get(&p.character_item_id)
-            .copied()
-            .unwrap_or(0);
-        p.recent_deaths_24h = death_counts_24h
-            .get(&p.character_item_id)
-            .copied()
-            .unwrap_or(0);
+        // Only overwrite recency counts if the event buffer produced a count for
+        // this profile. If the buffer has no kills for a pilot, their kills may
+        // have aged out of the capped ring buffer — keep the DB-loaded value
+        // rather than zeroing it (which would cause score oscillation).
+        if let Some(&kills) = kill_counts_24h.get(&p.character_item_id) {
+            p.recent_kills_24h = kills;
+        }
+        if let Some(&deaths) = death_counts_24h.get(&p.character_item_id) {
+            p.recent_deaths_24h = deaths;
+        }
         p.threat_score = crate::threat_engine::compute_score(p);
     }
 

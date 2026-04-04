@@ -168,16 +168,7 @@ pub async fn recent_kills(pool: &PgPool, limit: i64) -> Result<Vec<RawEvent>, sq
         .collect())
 }
 
-/// Insert a raw event.
-pub async fn insert_event(pool: &PgPool, e: &RawEvent) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT INTO raw_events (event_type, timestamp_ms, data) VALUES ($1, $2, $3)")
-        .bind(&e.event_type)
-        .bind(e.timestamp_ms as i64)
-        .bind(&e.data)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
+
 
 /// Insert multiple events in a single query using UNNEST.
 pub async fn insert_events_batch(pool: &PgPool, events: &[RawEvent]) -> Result<(), sqlx::Error> {

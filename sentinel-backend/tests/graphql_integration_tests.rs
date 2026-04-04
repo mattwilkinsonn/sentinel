@@ -94,34 +94,39 @@ async fn real_graphql_load_jump_events() {
 #[tokio::test]
 #[ignore]
 async fn real_graphql_load_character_names() {
-    let config = testnet_config();
-    let state = Arc::new(RwLock::new(AppState::default()));
+    tokio::time::timeout(std::time::Duration::from_secs(120), async {
+        let config = testnet_config();
+        let state = Arc::new(RwLock::new(AppState::default()));
 
-    // First load some characters so there are profiles to resolve names for
-    let _ = sentinel_backend::historical::load_character_events(&config, &state).await;
+        // First load some characters so there are profiles to resolve names for
+        let _ = sentinel_backend::historical::load_character_events(&config, &state).await;
 
-    let profile_count = state.read().await.live.profiles.len();
-    if profile_count == 0 {
-        println!("No profiles to resolve names for, skipping");
-        return;
-    }
+        let profile_count = state.read().await.live.profiles.len();
+        if profile_count == 0 {
+            println!("No profiles to resolve names for, skipping");
+            return;
+        }
 
-    let pool =
-        sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid").unwrap();
+        let pool =
+            sqlx::PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid").unwrap();
 
-    let count = sentinel_backend::historical::load_character_names_graphql(&config, &state, &pool)
-        .await
-        .unwrap();
+        let count =
+            sentinel_backend::historical::load_character_names_graphql(&config, &state, &pool)
+                .await
+                .unwrap();
 
-    println!("Resolved {count} character names from testnet");
-    let s = state.read().await;
-    let resolved = s
-        .live
-        .profiles
-        .values()
-        .filter(|p| p.name.is_some())
-        .count();
-    println!("Resolved names: {resolved}/{}", s.live.profiles.len());
+        println!("Resolved {count} character names from testnet");
+        let s = state.read().await;
+        let resolved = s
+            .live
+            .profiles
+            .values()
+            .filter(|p| p.name.is_some())
+            .count();
+        println!("Resolved names: {resolved}/{}", s.live.profiles.len());
+    })
+    .await
+    .expect("test timed out after 120s");
 }
 
 #[tokio::test]
