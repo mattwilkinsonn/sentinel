@@ -1,6 +1,6 @@
 //! Demo mode — seeds fake threat profiles and streams random events.
 
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -314,7 +314,7 @@ pub async fn seed_demo_data(config: &AppConfig, state: Arc<RwLock<AppState>>) {
     }
 
     // Seed 10 recent events spread across the last 5 minutes
-    let mut rng = StdRng::from_os_rng();
+    let mut rng = StdRng::from_rng(&mut rand::rng());
     for _ in 0..10 {
         let age_ms = rng.random_range(10_000..300_000u64);
         let ts = now - age_ms;
@@ -433,7 +433,7 @@ pub async fn seed_demo_data(config: &AppConfig, state: Arc<RwLock<AppState>>) {
 /// Spawn a background loop that generates random events every 3-8 seconds.
 pub async fn demo_event_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
     tracing::info!("Demo event stream started");
-    let mut rng = StdRng::from_os_rng();
+    let mut rng = StdRng::from_rng(&mut rand::rng());
     let mut last_event_type = "";
 
     loop {

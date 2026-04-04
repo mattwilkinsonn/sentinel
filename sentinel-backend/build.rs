@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
     // Compile Sui protos, mapping google.rpc to our module
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
         .extern_path(".google.rpc", "crate::google_rpc")
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 format!("{proto_root}/sui/rpc/v2/transaction_execution_service.proto"),
                 format!("{proto_root}/sui/rpc/v2/state_service.proto"),
             ],
-            &[proto_root],
+            &[proto_root.to_string()],
         )?;
 
     Ok(())
