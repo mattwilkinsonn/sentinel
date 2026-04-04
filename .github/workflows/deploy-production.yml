@@ -60,7 +60,7 @@ jobs:
         uses: pulumi/actions@v6
         with:
           command: up
-          stack-name: Zireael/production
+          stack-name: Zireael/sentinel/production
           work-dir: infrastructure
           upsert: true
           config-map: '{"sentinel:imageTag":{"value":"${{ github.sha }}"},"sentinel:neonOrgId":{"value":"${{ secrets.NEON_ORG_ID }}"}}'
@@ -70,8 +70,8 @@ jobs:
 
       - name: Upload frontend to S3
         run: |
-          BUCKET=$(cd infrastructure && pulumi stack output siteBucketName -s Zireael/production)
-          CDN_ID=$(cd infrastructure && pulumi stack output cdnDistributionId -s Zireael/production)
+          BUCKET=$(cd infrastructure && pulumi stack output siteBucketName -s Zireael/sentinel/production)
+          CDN_ID=$(cd infrastructure && pulumi stack output cdnDistributionId -s Zireael/sentinel/production)
           aws s3 sync frontend/dist "s3://$BUCKET" --delete
           aws cloudfront create-invalidation --distribution-id "$CDN_ID" --paths "/*"
 

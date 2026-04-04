@@ -38,7 +38,7 @@ if (isProduction) {
 
   databaseUrl = pulumi.interpolate`postgresql://${dbRole.name}:${dbRole.password}@${db.databaseHost}/${dbName.name}?sslmode=require`;
 } else {
-  const prodRef = new pulumi.StackReference("Zireael/production");
+  const prodRef = new pulumi.StackReference("Zireael/sentinel/production");
   const prodProjectId = prodRef.requireOutput(
     "neonProjectId",
   ) as pulumi.Output<string>;
