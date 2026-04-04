@@ -7,7 +7,7 @@ import { apiGateway } from "./network";
 // ---------------------------------------------------------------------------
 // S3 Bucket
 // ---------------------------------------------------------------------------
-export const siteBucket = new aws.s3.BucketV2("sentinel-frontend-bucket", {});
+export const siteBucket = new aws.s3.Bucket("sentinel-frontend-bucket", {});
 
 new aws.s3.BucketPublicAccessBlock("sentinel-frontend-block", {
   bucket: siteBucket.id,
