@@ -46,6 +46,8 @@ const namespace = new aws.servicediscovery.PrivateDnsNamespace("sentinel-ns", {
   vpc: vpc.vpcId,
 });
 
+// Note: no healthCheckCustomConfig — Cloud Map treats all registered instances
+// as healthy. ECS manages registration/deregistration on task start/stop.
 export const cloudMapService = new aws.servicediscovery.Service(
   "sentinel-api-discovery",
   {
@@ -55,7 +57,6 @@ export const cloudMapService = new aws.servicediscovery.Service(
       dnsRecords: [{ ttl: 10, type: "A" }],
       routingPolicy: "MULTIVALUE",
     },
-    healthCheckCustomConfig: { failureThreshold: 1 },
   },
 );
 
