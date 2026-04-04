@@ -18,6 +18,7 @@ if (isProduction) {
   const db = new neon.Project("sentinel-db", {
     name: "sentinel",
     orgId: neonOrgId,
+    regionId: "aws-us-east-1",
     historyRetentionSeconds: 86400,
   });
 
