@@ -46,9 +46,13 @@ const CHAIN_IDS = {
     "0x6fafed6fd8a529c404029addb34f5688f1cf8131aad5d92a3ab5de4036566288",
 };
 
+// Set domainPrefix to "pulumi." during migration, then remove after cutover.
+// e.g. pulumi config set domainPrefix "pulumi."
+const domainPrefix = config.get("domainPrefix") ?? "";
+
 function domainForStack(s: string): string {
-  if (s === "production") return "sentinel.zireael.dev";
-  return `sentinel-${s}.zireael.dev`;
+  if (s === "production") return `${domainPrefix}sentinel.zireael.dev`;
+  return `${domainPrefix}sentinel-${s}.zireael.dev`;
 }
 
 const domain = domainForStack(stack);

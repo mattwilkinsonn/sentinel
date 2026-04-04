@@ -37,13 +37,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Install Pulumi
-        uses: pulumi/actions@v6
-        with:
-          command: version
-
       - name: Install Neon provider
-        run: cd infrastructure && pulumi package add terraform-provider kislerdm/neon
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          export PATH=$HOME/.pulumi/bin:$PATH
+          cd infrastructure && pulumi package add terraform-provider kislerdm/neon
 
       - name: Install dependencies
         run: cd infrastructure && bun install
