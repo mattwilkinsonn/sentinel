@@ -2,7 +2,6 @@ import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import * as awsx from "@pulumi/awsx";
 import * as cloudflare from "@pulumi/cloudflare";
-import * as neon from "@pulumiverse/neon";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -12,7 +11,6 @@ const config = new pulumi.Config();
 const isProduction = stack === "production";
 
 const imageTag = config.require("imageTag");
-const neonOrgId = config.require("neonOrgId");
 
 // Backend runtime config (non-secret, non-chain values)
 const BACKEND_CONFIG = {
@@ -68,66 +66,10 @@ function ssmArn(name: string): pulumi.Output<string> {
 // ---------------------------------------------------------------------------
 // Neon Postgres
 // ---------------------------------------------------------------------------
-// Production creates the Neon project; dev reads it via StackReference.
-// Deploy production first, then dev. Dev branches scale to zero when idle.
-
-let databaseUrl: pulumi.Output<string>;
-let neonProjectId: pulumi.Output<string>;
-
-if (isProduction) {
-  const db = new neon.Project("sentinel-db", {
-    name: "sentinel",
-    orgId: neonOrgId,
-    historyRetentionSeconds: 86400,
-  });
-
-  neonProjectId = db.id;
-
-  const dbRole = new neon.Role("sentinel-db-role", {
-    projectId: db.id,
-    branchId: db.defaultBranchId,
-    name: "sentinel",
-  });
-
-  const dbName = new neon.Database("sentinel-database", {
-    projectId: db.id,
-    branchId: db.defaultBranchId,
-    name: "sentinel",
-    ownerName: dbRole.name,
-  });
-
-  databaseUrl = pulumi.interpolate`postgresql://${dbRole.name}:${dbRole.password}@${db.databaseHost}/${dbName.name}?sslmode=require`;
-} else {
-  // Read the production stack's Neon project ID
-  const prodRef = new pulumi.StackReference(`sentinel/production`);
-  neonProjectId = prodRef.requireOutput("neonProjectId") as pulumi.Output<string>;
-
-  const branch = new neon.Branch("sentinel-db-branch", {
-    projectId: neonProjectId,
-    name: stack,
-  });
-
-  const endpoint = new neon.Endpoint("sentinel-db-endpoint", {
-    projectId: neonProjectId,
-    branchId: branch.id,
-    type: "read_write",
-  });
-
-  const dbRole = new neon.Role("sentinel-db-role", {
-    projectId: neonProjectId,
-    branchId: branch.id,
-    name: "sentinel",
-  });
-
-  const dbName = new neon.Database("sentinel-database", {
-    projectId: neonProjectId,
-    branchId: branch.id,
-    name: "sentinel",
-    ownerName: dbRole.name,
-  });
-
-  databaseUrl = pulumi.interpolate`postgresql://${dbRole.name}:${dbRole.password}@${endpoint.host}/${dbName.name}?sslmode=require`;
-}
+// Managed outside Pulumi (Neon console / CLI). One project "Sentinel" with
+// branches per environment. Connection string provided via Pulumi config:
+//   pulumi config set --secret databaseUrl "postgresql://..."
+const databaseUrl = config.requireSecret("databaseUrl");
 
 // ---------------------------------------------------------------------------
 // VPC
@@ -635,6 +577,5 @@ new aws.cloudwatch.Dashboard("sentinel-dashboard", {
 export const domainName = domain;
 export const backendUrl = pulumi.interpolate`https://${apiDomain}`;
 export const frontendUrl = pulumi.interpolate`https://${domain}`;
-export const neonProjectIdOutput = neonProjectId;
 export const siteBucketName = siteBucket.bucket;
 export const cdnDistributionId = cdn.id;
