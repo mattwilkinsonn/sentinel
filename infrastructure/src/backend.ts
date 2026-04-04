@@ -184,6 +184,8 @@ export const service = new aws.ecs.Service(
     },
     serviceRegistries: {
       registryArn: cloudMapService.arn,
+      containerName: "backend",
+      containerPort: 3001,
     },
     forceNewDeployment: true,
   },

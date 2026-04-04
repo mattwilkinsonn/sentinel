@@ -54,7 +54,10 @@ export const cloudMapService = new aws.servicediscovery.Service(
     name: "backend",
     dnsConfig: {
       namespaceId: namespace.id,
-      dnsRecords: [{ ttl: 10, type: "A" }],
+      dnsRecords: [
+        { ttl: 10, type: "A" },
+        { ttl: 10, type: "SRV" },
+      ],
       routingPolicy: "MULTIVALUE",
     },
   },
