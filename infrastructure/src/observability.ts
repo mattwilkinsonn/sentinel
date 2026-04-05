@@ -334,7 +334,7 @@ const dashboardBody = pulumi
             region: reg,
             metrics: [
               [
-                "AWS/ECS",
+                "ECS/ContainerInsights",
                 "RunningTaskCount",
                 "ClusterName",
                 ecsCluster,
