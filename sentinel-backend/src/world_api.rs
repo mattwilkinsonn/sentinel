@@ -206,7 +206,7 @@ pub async fn metadata_resolver_loop(
     let mut failed_names: std::collections::HashSet<u64> = std::collections::HashSet::new();
 
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
 
         // Collect pending system IDs and tribe IDs
         let (pending_systems, pending_tribes): (Vec<String>, Vec<String>) = {

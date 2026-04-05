@@ -87,7 +87,7 @@ async fn connect_grpc(
 
 /// Spawn a background task that periodically resolves pending names.
 pub async fn name_resolver_loop(config: AppConfig, state: Arc<RwLock<AppState>>) {
-    let interval = std::time::Duration::from_secs(15);
+    let interval = std::time::Duration::from_secs(60);
 
     loop {
         tokio::time::sleep(interval).await;

@@ -315,7 +315,7 @@ async fn health_log_loop(
     }
 }
 
-/// Background loop that flushes dirty live profiles and checkpoint to Postgres.
+/// Background loop that flushes dirty live profiles and checkpoint to Postgres every hour.
 async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_events: usize) {
     let mut last_event_count: usize = initial_events;
     let mut persisted_gates: std::collections::HashSet<String> = {
@@ -327,7 +327,7 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
     let mut last_checkpoint: Option<u64> = None;
 
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
 
         // Collect dirty profiles and new events under a short lock
         let (dirty_profiles, new_events, checkpoint) = {
@@ -416,8 +416,8 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
             }
         }
 
-        // Prune old events every 5 minutes instead of every cycle
-        if last_event_count > 500 && last_prune.elapsed() > std::time::Duration::from_secs(300) {
+        // Prune old events every 10 minutes instead of every cycle
+        if last_event_count > 500 && last_prune.elapsed() > std::time::Duration::from_secs(600) {
             if let Ok(pruned) = db::prune_events(&pool, 1000).await {
                 if pruned > 0 {
                     tracing::debug!(pruned, "Pruned {pruned} old events from database");

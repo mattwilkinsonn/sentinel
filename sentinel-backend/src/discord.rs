@@ -441,20 +441,17 @@ impl Handler {
         Some(leaderboard_embed(&profiles, &stats))
     }
 
-    /// `/kills` — last 10 kills from DB with killer, victim, system, and time.
+    /// `/kills` — last 10 kills from in-memory event buffer.
     async fn cmd_kills(&self) -> Option<CreateEmbed> {
-        let kills = match crate::db::recent_kills(&self.db_pool, 10).await {
-            Ok(k) => k,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to query kills from DB");
-                return Some(
-                    CreateEmbed::new()
-                        .title("Recent Kills")
-                        .color(0xFF4444)
-                        .description("Failed to load kills."),
-                );
-            }
-        };
+        let state = self.state.read().await;
+        let kills: Vec<_> = state
+            .live
+            .recent_events
+            .iter()
+            .filter(|e| e.event_type == "kill" || e.event_type == "structure_destroyed")
+            .take(10)
+            .cloned()
+            .collect();
 
         if kills.is_empty() {
             return Some(
@@ -465,7 +462,6 @@ impl Handler {
             );
         }
 
-        let state = self.state.read().await;
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

@@ -20,6 +20,11 @@ if (isProduction) {
     orgId: neonOrgId,
     regionId: "aws-us-east-1",
     historyRetentionSeconds: 86400,
+    defaultEndpointSettings: {
+      autoscalingLimitMinCu: 0.25,
+      autoscalingLimitMaxCu: 0.25,
+      suspendTimeoutSeconds: 60,
+    },
   });
 
   neonProjectId = db.id;

@@ -26,6 +26,8 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
     let pool = PgPoolOptions::new()
         .max_connections(5)
+        .min_connections(0)
+        .idle_timeout(std::time::Duration::from_secs(30))
         .connect(database_url)
         .await?;
 
@@ -146,26 +148,6 @@ pub async fn upsert_profile(pool: &PgPool, p: &ThreatProfile) -> Result<(), sqlx
     .execute(pool)
     .await?;
     Ok(())
-}
-
-/// Fetch the most recent kill/structure_destroyed events from DB.
-pub async fn recent_kills(pool: &PgPool, limit: i64) -> Result<Vec<RawEvent>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, EventRow>(
-        "SELECT event_type, timestamp_ms, data FROM raw_events \
-         WHERE event_type IN ('kill', 'structure_destroyed') \
-         ORDER BY timestamp_ms DESC LIMIT $1",
-    )
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|r| RawEvent {
-            event_type: r.event_type,
-            timestamp_ms: r.timestamp_ms as u64,
-            data: r.data,
-        })
-        .collect())
 }
 
 
