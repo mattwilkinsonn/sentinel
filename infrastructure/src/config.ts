@@ -1,9 +1,9 @@
 import * as aws from "@pulumi/aws";
 import * as cloudflare from "@pulumi/cloudflare";
 import * as pulumi from "@pulumi/pulumi";
-import { domainForStack } from "./helpers";
+import { apiDomainForStack, domainForStack } from "./helpers";
 
-export { domainForStack };
+export { apiDomainForStack, domainForStack };
 
 export const stack = pulumi.getStack(); // "production" or "dev"
 const config = new pulumi.Config();
@@ -45,6 +45,7 @@ export const CHAIN_IDS = {
 };
 
 export const domain = domainForStack(stack);
+export const apiDomain = apiDomainForStack(stack);
 
 // SSM parameter ARNs for secrets (created manually, never in code)
 // Setup: aws ssm put-parameter --name /sentinel/<stack>/sui-publisher-key --type SecureString --value <key>

@@ -1,157 +1,71 @@
 import * as aws from "@pulumi/aws";
 import * as cloudflare from "@pulumi/cloudflare";
-import * as pulumi from "@pulumi/pulumi";
-import { domain, stack, zireaelZoneId } from "./config";
+import { apiDomain, zireaelZoneId } from "./config";
 import { apiGateway } from "./network";
 
 // ---------------------------------------------------------------------------
-// S3 Bucket
+// ACM Certificate for API domain (api.sentinel.zireael.dev)
 // ---------------------------------------------------------------------------
-export const siteBucket = new aws.s3.Bucket("sentinel-frontend-bucket", {});
-
-new aws.s3.BucketPublicAccessBlock("sentinel-frontend-block", {
-  bucket: siteBucket.id,
-  blockPublicAcls: true,
-  blockPublicPolicy: true,
-  ignorePublicAcls: true,
-  restrictPublicBuckets: true,
-});
-
-const oac = new aws.cloudfront.OriginAccessControl("sentinel-oac", {
-  name: `sentinel-${stack}-oac`,
-  originAccessControlOriginType: "s3",
-  signingBehavior: "always",
-  signingProtocol: "sigv4",
-});
-
-// ---------------------------------------------------------------------------
-// ACM Certificate
-// ---------------------------------------------------------------------------
-const cert = new aws.acm.Certificate("sentinel-cert", {
-  domainName: domain,
+export const apiCert = new aws.acm.Certificate("sentinel-api-cert", {
+  domainName: apiDomain,
   validationMethod: "DNS",
 });
 
-const certVal = cert.domainValidationOptions.apply((opts) => opts[0]);
+const apiCertVal = apiCert.domainValidationOptions.apply((opts) => opts[0]);
 // Strip trailing dots — ACM returns FQDNs with dots, Cloudflare rejects them
-const certValRecord = new cloudflare.DnsRecord("sentinel-cert-validation", {
-  zoneId: zireaelZoneId,
-  name: certVal.apply((v) => v.resourceRecordName.replace(/\.$/, "")),
-  type: certVal.apply((v) => v.resourceRecordType),
-  content: certVal.apply((v) => v.resourceRecordValue.replace(/\.$/, "")),
-  ttl: 60,
-});
-
-const certValidated = new aws.acm.CertificateValidation(
-  "sentinel-cert-validated",
+const apiCertValRecord = new cloudflare.DnsRecord(
+  "sentinel-api-cert-validation",
   {
-    certificateArn: cert.arn,
+    zoneId: zireaelZoneId,
+    name: apiCertVal.apply((v) => v.resourceRecordName.replace(/\.$/, "")),
+    type: apiCertVal.apply((v) => v.resourceRecordType),
+    content: apiCertVal.apply((v) => v.resourceRecordValue.replace(/\.$/, "")),
+    ttl: 60,
+  },
+);
+
+const apiCertValidated = new aws.acm.CertificateValidation(
+  "sentinel-api-cert-validated",
+  {
+    certificateArn: apiCert.arn,
     validationRecordFqdns: [
-      certVal.apply((v) => v.resourceRecordName.replace(/\.$/, "")),
+      apiCertVal.apply((v) => v.resourceRecordName.replace(/\.$/, "")),
     ],
   },
-  { dependsOn: [certValRecord] },
+  { dependsOn: [apiCertValRecord] },
 );
 
 // ---------------------------------------------------------------------------
-// API Gateway origin domain (extract host from invoke URL)
+// API Gateway Custom Domain
 // ---------------------------------------------------------------------------
-const apiOriginDomain = apiGateway.apiEndpoint.apply((url) => {
-  const parsed = new URL(url);
-  return parsed.hostname;
-});
-
-// ---------------------------------------------------------------------------
-// CloudFront Distribution
-// ---------------------------------------------------------------------------
-export const cdn = new aws.cloudfront.Distribution("sentinel-cdn", {
-  enabled: true,
-  defaultRootObject: "index.html",
-  aliases: [domain],
-  origins: [
-    {
-      domainName: siteBucket.bucketRegionalDomainName,
-      originId: "s3",
-      originAccessControlId: oac.id,
+export const apiDomainName = new aws.apigatewayv2.DomainName(
+  "sentinel-api-domain",
+  {
+    domainName: apiDomain,
+    domainNameConfiguration: {
+      certificateArn: apiCertValidated.certificateArn,
+      endpointType: "REGIONAL",
+      securityPolicy: "TLS_1_2",
     },
-    {
-      domainName: apiOriginDomain,
-      originId: "api",
-      customOriginConfig: {
-        httpPort: 80,
-        httpsPort: 443,
-        originProtocolPolicy: "https-only",
-        originSslProtocols: ["TLSv1.2"],
-      },
-    },
-  ],
-  defaultCacheBehavior: {
-    targetOriginId: "s3",
-    viewerProtocolPolicy: "redirect-to-https",
-    allowedMethods: ["GET", "HEAD", "OPTIONS"],
-    cachedMethods: ["GET", "HEAD"],
-    forwardedValues: { queryString: false, cookies: { forward: "none" } },
-    compress: true,
   },
-  orderedCacheBehaviors: [
-    {
-      pathPattern: "/api/*",
-      targetOriginId: "api",
-      viewerProtocolPolicy: "redirect-to-https",
-      allowedMethods: [
-        "DELETE",
-        "GET",
-        "HEAD",
-        "OPTIONS",
-        "PATCH",
-        "POST",
-        "PUT",
-      ],
-      cachedMethods: ["GET", "HEAD"],
-      // CachingDisabled managed policy — API responses should not be cached
-      cachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
-      // AllViewerExceptHostHeader — pass headers/query through, rewrite Host
-      originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
-      compress: true,
-    },
-  ],
-  customErrorResponses: [
-    { errorCode: 404, responseCode: 200, responsePagePath: "/index.html" },
-    { errorCode: 403, responseCode: 200, responsePagePath: "/index.html" },
-  ],
-  viewerCertificate: {
-    acmCertificateArn: certValidated.certificateArn,
-    sslSupportMethod: "sni-only",
-    minimumProtocolVersion: "TLSv1.2_2021",
-  },
-  restrictions: { geoRestriction: { restrictionType: "none" } },
+);
+
+new aws.apigatewayv2.ApiMapping("sentinel-api-mapping", {
+  apiId: apiGateway.id,
+  domainName: apiDomainName.id,
+  stage: "$default",
 });
 
-// S3 bucket policy: allow CloudFront OAC
-new aws.s3.BucketPolicy("sentinel-frontend-policy", {
-  bucket: siteBucket.id,
-  policy: pulumi.all([siteBucket.arn, cdn.arn]).apply(([bucketArn, cdnArn]) =>
-    JSON.stringify({
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Principal: { Service: "cloudfront.amazonaws.com" },
-          Action: "s3:GetObject",
-          Resource: `${bucketArn}/*`,
-          Condition: { StringEquals: { "AWS:SourceArn": cdnArn } },
-        },
-      ],
-    }),
-  ),
-});
-
-// Cloudflare DNS
-new cloudflare.DnsRecord("sentinel-dns", {
+// ---------------------------------------------------------------------------
+// Cloudflare DNS — API domain → API Gateway
+// ---------------------------------------------------------------------------
+new cloudflare.DnsRecord("sentinel-api-dns", {
   zoneId: zireaelZoneId,
-  name: domain,
+  name: apiDomain,
   type: "CNAME",
-  content: cdn.domainName,
+  content: apiDomainName.domainNameConfiguration.apply(
+    (c) => c.targetDomainName,
+  ),
   ttl: 1,
   proxied: false,
 });

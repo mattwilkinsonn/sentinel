@@ -7,6 +7,8 @@ name: Deploy (production)
         required: true
       CLOUDFLARE_API_TOKEN:
         required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
       NEON_API_KEY:
         required: true
       NEON_ORG_ID:
@@ -49,7 +51,7 @@ jobs:
       - name: Build frontend
         run: cd frontend && bun install && bun run build
         env:
-          VITE_API_URL: ""
+          VITE_API_URL: "https://api.sentinel.zireael.dev"
           VITE_SUI_RPC_URL: https://fullnode.testnet.sui.io:443
           VITE_WORLD_PACKAGE_ID: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c"
           VITE_BUILDER_PACKAGE_ID: "0x2df819a1e5a5b21044931b2619cdb8e67d7ff0d22a138fabd94b18d73a795358"
@@ -68,12 +70,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
-      - name: Upload frontend to S3
-        run: |
-          BUCKET=$(cd infrastructure && pulumi stack output siteBucketName -s Zireael/sentinel/production)
-          CDN_ID=$(cd infrastructure && pulumi stack output cdnDistributionId -s Zireael/sentinel/production)
-          aws s3 sync frontend/dist "s3://$BUCKET" --delete
-          aws cloudfront create-invalidation --distribution-id "$CDN_ID" --paths "/*"
+      - name: Deploy frontend to Cloudflare Pages
+        run: bunx wrangler pages deploy frontend/dist --project-name=sentinel --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Wait for ECS service to stabilize
         run: |

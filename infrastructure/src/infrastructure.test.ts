@@ -94,55 +94,34 @@ describe("infrastructure (dev stack)", () => {
     });
   });
 
-  describe("frontend", () => {
-    it("creates an S3 bucket", () => {
-      expect(frontend.siteBucket).toBeDefined();
+  describe("API domain", () => {
+    it("ACM cert targets api.sentinel-dev.zireael.dev", async () => {
+      const domain = await outputValue(frontend.apiCert.domainName);
+      expect(domain).toBe("api.sentinel-dev.zireael.dev");
     });
 
-    it("CDN serves index.html as default root", async () => {
-      const root = await outputValue(frontend.cdn.defaultRootObject);
-      expect(root).toBe("index.html");
+    it("ACM cert uses DNS validation", async () => {
+      const method = await outputValue(frontend.apiCert.validationMethod);
+      expect(method).toBe("DNS");
     });
 
-    it("CDN is enabled", async () => {
-      const enabled = await outputValue(frontend.cdn.enabled);
-      expect(enabled).toBe(true);
+    it("API Gateway custom domain matches api subdomain", async () => {
+      const domain = await outputValue(frontend.apiDomainName.domainName);
+      expect(domain).toBe("api.sentinel-dev.zireael.dev");
     });
 
-    it("CDN has two origins (s3 + api)", async () => {
-      const origins = await outputValue(frontend.cdn.origins);
-      expect(origins).toHaveLength(2);
-      const ids = origins?.map((o: { originId: string }) => o.originId);
-      expect(ids).toContain("s3");
-      expect(ids).toContain("api");
+    it("API Gateway custom domain uses TLS 1.2", async () => {
+      const config = await outputValue(
+        frontend.apiDomainName.domainNameConfiguration,
+      );
+      expect(config.securityPolicy).toBe("TLS_1_2");
     });
 
-    it("CDN routes /api/* to API Gateway origin", async () => {
-      const behaviors = await outputValue(frontend.cdn.orderedCacheBehaviors);
-      expect(behaviors).toHaveLength(1);
-      expect(behaviors?.[0].pathPattern).toBe("/api/*");
-      expect(behaviors?.[0].targetOriginId).toBe("api");
-    });
-
-    it("CDN uses redirect-to-https viewer policy", async () => {
-      const behavior = await outputValue(frontend.cdn.defaultCacheBehavior);
-      expect(behavior.viewerProtocolPolicy).toBe("redirect-to-https");
-    });
-
-    it("CDN has SPA fallback for 404 and 403", async () => {
-      const errors = await outputValue(frontend.cdn.customErrorResponses);
-      const codes = errors?.map((e: { errorCode: number }) => e.errorCode);
-      expect(codes).toContain(404);
-      expect(codes).toContain(403);
-      for (const e of errors ?? []) {
-        expect(e.responseCode).toBe(200);
-        expect(e.responsePagePath).toBe("/index.html");
-      }
-    });
-
-    it("CDN uses TLS 1.2 minimum", async () => {
-      const cert = await outputValue(frontend.cdn.viewerCertificate);
-      expect(cert.minimumProtocolVersion).toBe("TLSv1.2_2021");
+    it("API Gateway custom domain is REGIONAL", async () => {
+      const config = await outputValue(
+        frontend.apiDomainName.domainNameConfiguration,
+      );
+      expect(config.endpointType).toBe("REGIONAL");
     });
   });
 });

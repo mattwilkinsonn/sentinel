@@ -1,18 +1,16 @@
 import * as pulumi from "@pulumi/pulumi";
-import { domain } from "./config";
+import { apiDomain, domain } from "./config";
 import { neonProjectId } from "./database";
 import "./network";
 import "./backend";
-import { cdn, siteBucket } from "./frontend";
+import "./frontend";
 import "./observability";
 
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 export const domainName = domain;
-export const backendUrl = pulumi.interpolate`https://${domain}/api`;
+export const backendUrl = pulumi.interpolate`https://${apiDomain}/api`;
 export const frontendUrl = pulumi.interpolate`https://${domain}`;
-export const siteBucketName = siteBucket.bucket;
-export const cdnDistributionId = cdn.id;
 // Dev stacks read this via StackReference to create Neon branches
 export { neonProjectId };
