@@ -85,7 +85,7 @@ const taskDef = new aws.ecs.TaskDefinition("sentinel-backend-task", {
   requiresCompatibilities: ["FARGATE"],
   networkMode: "awsvpc",
   cpu: "256",
-  memory: "256",
+  memory: "512",
   runtimePlatform: {
     cpuArchitecture: "ARM64",
     operatingSystemFamily: "LINUX",
