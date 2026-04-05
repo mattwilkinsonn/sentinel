@@ -20,14 +20,21 @@ if (isProduction) {
     orgId: neonOrgId,
     regionId: "aws-us-east-1",
     historyRetentionSeconds: 86400,
-    defaultEndpointSettings: {
-      autoscalingLimitMinCu: 0.25,
-      autoscalingLimitMaxCu: 0.25,
-      suspendTimeoutSeconds: 60,
-    },
   });
 
   neonProjectId = db.id;
+
+  // Manage the default endpoint explicitly to cap autoscaling at 0.25 CU.
+  // Setting this on the Project resource triggers a provider bug that tries
+  // to update maintenance window preferences (blocked on free tier).
+  const prodEndpoint = new neon.Endpoint("sentinel-db-endpoint", {
+    projectId: db.id,
+    branchId: db.defaultBranchId,
+    autoscalingLimitMinCu: 0.25,
+    autoscalingLimitMaxCu: 0.25,
+    suspendTimeoutSeconds: 60,
+    type: "read_write",
+  });
 
   const dbRole = new neon.Role("sentinel-db-role", {
     projectId: db.id,
@@ -42,7 +49,7 @@ if (isProduction) {
     ownerName: dbRole.name,
   });
 
-  databaseUrl = pulumi.interpolate`postgresql://${dbRole.name}:${dbRole.password}@${db.databaseHost}/${dbName.name}?sslmode=require`;
+  databaseUrl = pulumi.interpolate`postgresql://${dbRole.name}:${dbRole.password}@${prodEndpoint.host}/${dbName.name}?sslmode=require`;
 } else {
   const prodRef = new pulumi.StackReference("Zireael/sentinel/production");
   const prodProjectId = prodRef.requireOutput(
