@@ -1,6 +1,7 @@
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import {
+  apiDomain,
   BACKEND_CONFIG,
   CHAIN_IDS,
   imageTag,
@@ -136,6 +137,10 @@ const taskDef = new aws.ecs.TaskDefinition("sentinel-backend-task", {
             { name: "WORLD_PACKAGE_ID", value: CHAIN_IDS.worldPackageId },
             { name: "BUILDER_PACKAGE_ID", value: CHAIN_IDS.builderPackageId },
             { name: "DATABASE_URL", value: dbUrl },
+            {
+              name: "SENTINEL_PUBLIC_URL",
+              value: `https://${apiDomain}/api/health`,
+            },
           ],
           secrets: [
             { name: "SUI_PUBLISHER_KEY", valueFrom: pubKeyArn },

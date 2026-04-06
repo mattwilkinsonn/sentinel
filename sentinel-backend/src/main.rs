@@ -224,10 +224,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db_sync_loop(sync_pool, sync_state, initial_event_count).await;
     });
 
-    // Periodic health summary
+    // Periodic health summary + VPC Link keep-alive
     let health_state = state.clone();
+    let health_config = config.clone();
     tokio::spawn(async move {
-        health_log_loop(health_state, discord_commands_run).await;
+        health_log_loop(health_config, health_state, discord_commands_run).await;
     });
 
     // HTTP API + SSE
@@ -242,11 +243,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Periodic health monitor.
+/// - Pings the public API endpoint every 30s to keep the VPC Link warm.
 /// - Checks gRPC stream staleness every 30s; warns immediately if no checkpoint
 ///   has arrived in >2 minutes (hung connection — distinct from a dropped connection,
 ///   which the reconnect loop already logs).
 /// - Logs a full health summary every 5 minutes.
 async fn health_log_loop(
+    config: AppConfig,
     state: Arc<RwLock<AppState>>,
     discord_commands_run: Arc<std::sync::atomic::AtomicU64>,
 ) {
@@ -254,10 +257,31 @@ async fn health_log_loop(
     const SUMMARY_INTERVAL_SECS: u64 = 60;
     const CHECK_INTERVAL_SECS: u64 = 30;
 
+    // Keep the API Gateway → VPC Link path warm by pinging the public endpoint.
+    let http_client = config.public_url.as_ref().map(|_| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build HTTP client")
+    });
+
     let mut ticks: u64 = 0;
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(CHECK_INTERVAL_SECS)).await;
         ticks += 1;
+
+        // VPC Link keep-alive ping
+        if let (Some(url), Some(client)) = (&config.public_url, &http_client) {
+            match client.get(url.as_str()).send().await {
+                Ok(resp) if !resp.status().is_success() => {
+                    tracing::warn!(status = %resp.status(), "Keep-alive ping returned non-200");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Keep-alive ping failed: {e}");
+                }
+                _ => {}
+            }
+        }
 
         let s = state.read().await;
 

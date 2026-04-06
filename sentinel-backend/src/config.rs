@@ -56,6 +56,8 @@ pub struct AppConfig {
     pub discord_token: String,
     /// Maximum events retained in the in-memory ring-buffer (MAX_RECENT_EVENTS)
     pub max_recent_events: usize,
+    /// Public health endpoint URL for VPC Link keep-alive (optional)
+    pub public_url: Option<String>,
 }
 
 fn require(name: &str) -> String {
@@ -96,6 +98,7 @@ impl AppConfig {
             max_recent_events: require("MAX_RECENT_EVENTS")
                 .parse()
                 .expect("MAX_RECENT_EVENTS must be a number"),
+            public_url: env::var("SENTINEL_PUBLIC_URL").ok(),
         })
     }
 }
