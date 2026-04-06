@@ -418,8 +418,8 @@ async fn resolve_shared_initial_version(
 }
 
 /// Minimum gas balance (in MIST) before we warn. 1 SUI = 1_000_000_000 MIST.
-/// At ~8 publishes/hour × 0.5 SUI each ≈ 96 SUI/day, this is ~1 day of runway.
-const GAS_BALANCE_WARN_THRESHOLD: u64 = 100_000_000_000;
+/// ~0.5 SUI ≈ 1 day of runway at ~50 publishes/day × ~5M MIST gas each.
+const GAS_BALANCE_WARN_THRESHOLD: u64 = 500_000_000;
 
 /// Get a SUI gas coin for the given address via gRPC ListOwnedObjects.
 /// Logs a warning if the balance is below `GAS_BALANCE_WARN_THRESHOLD`.
