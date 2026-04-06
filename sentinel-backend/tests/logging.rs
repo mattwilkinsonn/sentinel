@@ -65,6 +65,7 @@ fn test_config() -> AppConfig {
         log_format: LogFormat::Json,
         discord_token: "test-token".into(),
         max_recent_events: 1000,
+        public_url: None,
     }
 }
 

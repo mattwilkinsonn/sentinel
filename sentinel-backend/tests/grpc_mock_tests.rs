@@ -457,6 +457,7 @@ async fn process_checkpoint_events_handles_killmail() {
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
         max_recent_events: 1000,
+        public_url: None,
     };
 
     let kill_event_json = serde_json::json!({
@@ -533,6 +534,7 @@ async fn process_checkpoint_events_handles_character_created() {
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
         max_recent_events: 1000,
+        public_url: None,
     };
 
     let event_json = serde_json::json!({
@@ -601,6 +603,7 @@ async fn process_checkpoint_events_filters_wrong_package() {
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
         max_recent_events: 1000,
+        public_url: None,
     };
 
     let checkpoint = sui_rpc::Checkpoint {
@@ -651,6 +654,7 @@ async fn checkpoint_replay_processes_events_across_checkpoints() {
         log_format: sentinel_backend::config::LogFormat::Pretty,
         discord_token: "unused".into(),
         max_recent_events: 1000,
+        public_url: None,
     };
 
     // Create 3 checkpoints with events

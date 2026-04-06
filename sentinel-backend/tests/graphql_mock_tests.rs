@@ -70,6 +70,7 @@ fn test_config(graphql_url: &str) -> AppConfig {
         log_format: LogFormat::Pretty,
         discord_token: "unused".into(),
         max_recent_events: 1000,
+        public_url: None,
     }
 }
 
