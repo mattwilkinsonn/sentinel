@@ -529,14 +529,14 @@ mod logging_tests {
         let _guard = tracing::subscriber::set_default(sub);
 
         let err_msg = "connection refused";
-        tracing::error!(
+        tracing::warn!(
             error = err_msg,
             "gRPC stream error: {err_msg}, reconnecting in 2s..."
         );
 
         let out = read_buf(&buf);
         let json: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
-        assert_eq!(json["level"], "ERROR");
+        assert_eq!(json["level"], "WARN");
         assert_eq!(json["fields"]["error"], "connection refused");
         assert!(
             json["fields"]["message"]
