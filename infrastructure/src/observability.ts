@@ -86,12 +86,12 @@ new aws.cloudwatch.MetricAlarm(
 new aws.cloudwatch.MetricAlarm("task-down-alarm", {
   name: `sentinel-${stack}-task-down`,
   alarmDescription:
-    "ECS running task count dropped to 0 — possible Spot interruption",
+    "ECS running task count at 0 for 10+ minutes — may need attention",
   namespace: "ECS/ContainerInsights",
   metricName: "RunningTaskCount",
   statistic: "Minimum",
   period: 60,
-  evaluationPeriods: 1,
+  evaluationPeriods: 10,
   threshold: 1,
   comparisonOperator: "LessThanThreshold",
   treatMissingData: "breaching",
