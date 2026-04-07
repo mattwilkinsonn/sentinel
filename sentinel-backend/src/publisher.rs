@@ -142,7 +142,7 @@ pub async fn publish_loop(
         let channel = match connect_grpc(&config.sui_grpc_url).await {
             Ok(ch) => ch,
             Err(e) => {
-                tracing::error!(error = %e, "Publisher: gRPC connect failed: {e}");
+                tracing::warn!(error = %e, "Publisher: gRPC connect failed: {e}");
                 consecutive_failures += 1;
                 continue;
             }
@@ -250,7 +250,7 @@ pub async fn publish_loop(
                     cap_override = new_cap;
                 }
                 Err(e) => {
-                    tracing::error!(error = %e, "Failed to publish batch: {e}");
+                    tracing::warn!(error = %e, "Failed to publish batch: {e}");
                     batch_ok = false;
                     break;
                 }

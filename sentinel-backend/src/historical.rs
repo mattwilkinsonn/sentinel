@@ -48,7 +48,7 @@ pub async fn load_all(
     let channel = match crate::sui_client::connect(&config.sui_grpc_url).await {
         Ok(ch) => ch,
         Err(e) => {
-            tracing::error!("Historical loader: gRPC connect failed: {e}");
+            tracing::warn!("Historical loader: gRPC connect failed: {e}");
             // Still finalize even if gRPC fails
             finalize(&state).await;
             tracing::info!("Historical data load complete (gRPC unavailable)");

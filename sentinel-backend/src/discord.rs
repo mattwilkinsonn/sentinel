@@ -283,7 +283,7 @@ impl EventHandler for Handler {
         ];
 
         if let Err(e) = Command::set_global_commands(&ctx.http, commands).await {
-            tracing::error!(error = %e, "Failed to register slash commands: {e}");
+            tracing::warn!(error = %e, "Failed to register slash commands: {e}");
         } else {
             tracing::info!("Discord slash commands registered");
         }
@@ -349,7 +349,7 @@ impl Handler {
             let msg = CreateInteractionResponseMessage::new().embed(embed);
             let response = CreateInteractionResponse::Message(msg);
             if let Err(e) = cmd.create_response(&ctx.http, response).await {
-                tracing::error!(error = %e, "Failed to respond to command: {e}");
+                tracing::warn!(error = %e, "Failed to respond to command: {e}");
             }
         }
     }
@@ -823,7 +823,7 @@ impl Handler {
             .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
             .await
         {
-            tracing::error!(error = %e, "Failed to respond to alerts command: {e}");
+            tracing::warn!(error = %e, "Failed to respond to alerts command: {e}");
         }
     }
 
@@ -881,7 +881,7 @@ impl Handler {
             .create_response(&ctx.http, CreateInteractionResponse::Autocomplete(response))
             .await
         {
-            tracing::error!(error = %e, "Failed to send autocomplete: {e}");
+            tracing::warn!(error = %e, "Failed to send autocomplete: {e}");
         }
     }
 }
@@ -966,7 +966,7 @@ async fn alert_loop(
                         let channel = ChannelId::new(channel_id);
                         let msg = CreateMessage::new().embed(embed.clone());
                         if let Err(e) = channel.send_message(&http, msg).await {
-                            tracing::error!(
+                            tracing::warn!(
                                 guild = guild_id,
                                 channel = channel_id,
                                 error = %e,
@@ -1049,6 +1049,6 @@ pub async fn run_discord_bot(
     });
 
     if let Err(e) = client.start().await {
-        tracing::error!(error = %e, "Discord client error: {e}");
+        tracing::warn!(error = %e, "Discord client error: {e}");
     }
 }
