@@ -95,8 +95,28 @@ new aws.apigatewayv2.Route("sentinel-api-route", {
   target: integration.id.apply((id) => `integrations/${id}`),
 });
 
+const apiAccessLogGroup = new aws.cloudwatch.LogGroup("sentinel-api-access-logs", {
+  name: `/aws/apigateway/sentinel-${stack}`,
+  retentionInDays: 7,
+});
+
 new aws.apigatewayv2.Stage("sentinel-api-stage", {
   apiId: apiGateway.id,
   name: "$default",
   autoDeploy: true,
+  accessLogSettings: {
+    destinationArn: apiAccessLogGroup.arn,
+    format: JSON.stringify({
+      requestId: "$context.requestId",
+      ip: "$context.identity.sourceIp",
+      requestTime: "$context.requestTime",
+      httpMethod: "$context.httpMethod",
+      routeKey: "$context.routeKey",
+      status: "$context.status",
+      protocol: "$context.protocol",
+      responseLength: "$context.responseLength",
+      integrationLatency: "$context.integrationLatency",
+      userAgent: "$context.identity.userAgent",
+    }),
+  },
 });
