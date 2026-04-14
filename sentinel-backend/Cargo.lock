@@ -592,7 +592,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1437,7 +1437,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2075,7 +2075,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2472,7 +2472,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2729,15 +2729,16 @@ dependencies = [
 
 [[package]]
 name = "sui-rpc"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c1de70a3262b561b3ff0848e43b4feff41c3083e2744e0442c79cb2204e5fd2"
+checksum = "00a313a63f07ada0be04c03e9d6e8c1d176e5a469ee6e3b6f973dee525667311"
 dependencies = [
  "base64",
  "bcs",
  "bytes",
  "futures",
  "http",
+ "http-body",
  "prost",
  "prost-types",
  "serde",
@@ -2747,6 +2748,7 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-prost",
+ "tower",
 ]
 
 [[package]]
@@ -2833,7 +2835,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
