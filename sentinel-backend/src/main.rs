@@ -253,7 +253,8 @@ async fn health_log_loop(
     state: Arc<RwLock<AppState>>,
     discord_commands_run: Arc<std::sync::atomic::AtomicU64>,
 ) {
-    const STALL_THRESHOLD_SECS: u64 = 120;
+    const STALL_WARN_SECS: u64 = 120;
+    const STALL_ERROR_SECS: u64 = 600;
     const SUMMARY_INTERVAL_SECS: u64 = 60;
     const CHECK_INTERVAL_SECS: u64 = 30;
 
@@ -291,9 +292,16 @@ async fn health_log_loop(
             .map(|t| t.elapsed().as_secs())
             .unwrap_or(u64::MAX);
 
-        // Immediate error on hung stream — surfaces in CloudWatch for alarming
-        if stream_lag_secs > STALL_THRESHOLD_SECS {
+        // Warn at 2 min, escalate to ERROR at 10 min — short stalls are testnet noise
+        if stream_lag_secs > STALL_ERROR_SECS {
             tracing::error!(
+                lag_secs = stream_lag_secs,
+                cursor = checkpoint,
+                "gRPC stream hung — no checkpoint in {}s (cursor: {checkpoint})",
+                stream_lag_secs
+            );
+        } else if stream_lag_secs > STALL_WARN_SECS {
+            tracing::warn!(
                 lag_secs = stream_lag_secs,
                 cursor = checkpoint,
                 "gRPC stream may be hung — no checkpoint in {}s (cursor: {checkpoint})",
@@ -311,12 +319,12 @@ async fn health_log_loop(
                 .filter(|id| !s.live.name_cache.contains_key(id))
                 .count();
             let events = s.live.recent_events.len();
-            let grpc_status = if stream_lag_secs > STALL_THRESHOLD_SECS {
+            let grpc_status = if stream_lag_secs > STALL_WARN_SECS {
                 "hung"
             } else {
                 "ok"
             };
-            let stream_status = if stream_lag_secs > STALL_THRESHOLD_SECS {
+            let stream_status = if stream_lag_secs > STALL_WARN_SECS {
                 format!("hung ({}s)", stream_lag_secs)
             } else {
                 format!("ok ({}s ago)", stream_lag_secs)
