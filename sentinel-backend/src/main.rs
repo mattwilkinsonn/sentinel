@@ -202,26 +202,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Metadata resolver (system names + tribe affiliations via World API)
     let meta_state = state.clone();
     let meta_client = world_client.clone();
-    let meta_pool = db_pool.clone();
     let api_port = config.api_port;
     let meta_config = config.clone();
     tokio::spawn(async move {
         world_api::metadata_resolver_loop(
             meta_client,
             meta_state,
-            meta_pool,
             meta_config.sui_grpc_url.clone(),
             meta_config.world_package_id.clone(),
         )
         .await;
     });
 
-    // Database sync loop (persists dirty profiles + events)
+    // Database sync loop (persists dirty profiles + events + caches)
     let initial_event_count = state.read().await.live.recent_events.len();
     let sync_state = state.clone();
     let sync_pool = db_pool.clone();
+    let sync_world_client = world_client.clone();
     tokio::spawn(async move {
-        db_sync_loop(sync_pool, sync_state, initial_event_count).await;
+        db_sync_loop(sync_pool, sync_state, sync_world_client, initial_event_count).await;
     });
 
     // Periodic health summary + VPC Link keep-alive
@@ -348,12 +347,28 @@ async fn health_log_loop(
 }
 
 /// Background loop that flushes dirty live profiles and checkpoint to Postgres every hour.
-async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_events: usize) {
+async fn db_sync_loop(
+    pool: sqlx::PgPool,
+    state: Arc<RwLock<AppState>>,
+    world_client: Arc<RwLock<world_api::WorldApiClient>>,
+    initial_events: usize,
+) {
     let mut last_event_count: usize = initial_events;
     let mut persisted_gates: std::collections::HashSet<String> = {
-        // Pre-populate with gates already in DB (loaded at startup)
         let s = state.read().await;
         s.live.gate_name_cache.keys().cloned().collect()
+    };
+    let mut persisted_names: std::collections::HashSet<u64> = {
+        let s = state.read().await;
+        s.live.name_cache.keys().copied().collect()
+    };
+    let mut persisted_systems: std::collections::HashSet<String> = {
+        let c = world_client.read().await;
+        c.system_cache_keys()
+    };
+    let mut persisted_tribes: std::collections::HashSet<String> = {
+        let c = world_client.read().await;
+        c.tribe_cache_keys()
     };
     let mut last_prune = tokio::time::Instant::now();
     let mut last_checkpoint: Option<u64> = None;
@@ -443,6 +458,65 @@ async fn db_sync_loop(pool: sqlx::PgPool, state: Arc<RwLock<AppState>>, initial_
                         tracing::warn!(gate_id, error = %e, "Failed to persist gate name {gate_id}: {e}");
                     } else {
                         persisted_gates.insert(gate_id.clone());
+                    }
+                }
+            }
+        }
+
+        // Persist any new character names resolved by metadata loop
+        {
+            let s = state.read().await;
+            for (id, name) in &s.live.name_cache {
+                if !name.is_empty() && !persisted_names.contains(id) {
+                    if let Err(e) = db::upsert_character_name(&pool, *id, name).await {
+                        tracing::warn!(character_id = id, error = %e, "Failed to persist character name {id}: {e}");
+                    } else {
+                        persisted_names.insert(*id);
+                    }
+                }
+            }
+        }
+
+        // Persist any new system names resolved by metadata loop
+        {
+            let entries = world_client.read().await.system_cache_entries();
+            for (system_id, name) in entries {
+                if !persisted_systems.contains(&system_id) {
+                    if let Err(e) = sqlx::query(
+                        "INSERT INTO solar_system_cache (system_id, name) VALUES ($1, $2) \
+                         ON CONFLICT (system_id) DO NOTHING",
+                    )
+                    .bind(&system_id)
+                    .bind(&name)
+                    .execute(&pool)
+                    .await
+                    {
+                        tracing::warn!(system_id = %system_id, error = %e, "Failed to persist system {system_id}: {e}");
+                    } else {
+                        persisted_systems.insert(system_id);
+                    }
+                }
+            }
+        }
+
+        // Persist any new tribe info resolved by metadata loop
+        {
+            let entries = world_client.read().await.tribe_cache_entries();
+            for (tribe_id, info) in entries {
+                if !persisted_tribes.contains(&tribe_id) {
+                    if let Err(e) = sqlx::query(
+                        "INSERT INTO tribe_cache (tribe_id, name, name_short) VALUES ($1, $2, $3) \
+                         ON CONFLICT (tribe_id) DO NOTHING",
+                    )
+                    .bind(&tribe_id)
+                    .bind(&info.name)
+                    .bind(&info.name_short)
+                    .execute(&pool)
+                    .await
+                    {
+                        tracing::warn!(tribe_id = %tribe_id, error = %e, "Failed to persist tribe {tribe_id}: {e}");
+                    } else {
+                        persisted_tribes.insert(tribe_id);
                     }
                 }
             }

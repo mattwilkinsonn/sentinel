@@ -76,8 +76,36 @@ impl WorldApiClient {
         self.tribe_cache.get(tribe_id)
     }
 
+    /// Snapshot of system cache keys (for db_sync_loop persistence tracking).
+    pub fn system_cache_keys(&self) -> std::collections::HashSet<String> {
+        self.system_cache.keys().cloned().collect()
+    }
+
+    /// Snapshot of tribe cache keys (for db_sync_loop persistence tracking).
+    pub fn tribe_cache_keys(&self) -> std::collections::HashSet<String> {
+        self.tribe_cache.keys().cloned().collect()
+    }
+
+    /// Snapshot of all (system_id, name) entries with non-empty names.
+    pub fn system_cache_entries(&self) -> Vec<(String, String)> {
+        self.system_cache
+            .iter()
+            .filter(|(_, v)| !v.is_empty())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
+    /// Snapshot of all (tribe_id, info) entries.
+    pub fn tribe_cache_entries(&self) -> Vec<(String, TribeInfo)> {
+        self.tribe_cache
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
     /// Fetch and cache a solar system name from the World API.
-    pub async fn fetch_system_name(&mut self, system_id: &str, pool: &PgPool) -> Option<String> {
+    /// Only updates in-memory cache — db_sync_loop persists to DB.
+    pub async fn fetch_system_name(&mut self, system_id: &str) -> Option<String> {
         if let Some(name) = self.system_cache.get(system_id) {
             return Some(name.clone());
         }
@@ -90,17 +118,6 @@ impl WorldApiClient {
                         let name = name.to_string();
                         self.system_cache
                             .insert(system_id.to_string(), name.clone());
-
-                        // Persist to DB
-                        let _ = sqlx::query(
-                            "INSERT INTO solar_system_cache (system_id, name) VALUES ($1, $2) \
-                             ON CONFLICT (system_id) DO NOTHING",
-                        )
-                        .bind(system_id)
-                        .bind(&name)
-                        .execute(pool)
-                        .await;
-
                         return Some(name);
                     }
                 }
@@ -139,7 +156,8 @@ impl WorldApiClient {
     }
 
     /// Fetch and cache tribe info from the World API.
-    pub async fn fetch_tribe(&mut self, tribe_id: &str, pool: &PgPool) -> Option<TribeInfo> {
+    /// Only updates in-memory cache — db_sync_loop persists to DB.
+    pub async fn fetch_tribe(&mut self, tribe_id: &str) -> Option<TribeInfo> {
         if tribe_id.is_empty() {
             return None;
         }
@@ -168,17 +186,6 @@ impl WorldApiClient {
                         name_short: name_short.clone(),
                     };
                     self.tribe_cache.insert(tribe_id.to_string(), info.clone());
-
-                    let _ = sqlx::query(
-                        "INSERT INTO tribe_cache (tribe_id, name, name_short) VALUES ($1, $2, $3) \
-                         ON CONFLICT (tribe_id) DO NOTHING",
-                    )
-                    .bind(tribe_id)
-                    .bind(&name)
-                    .bind(&name_short)
-                    .execute(pool)
-                    .await;
-
                     return Some(info);
                 }
             }
@@ -199,7 +206,6 @@ impl WorldApiClient {
 pub async fn metadata_resolver_loop(
     world_client: std::sync::Arc<tokio::sync::RwLock<WorldApiClient>>,
     state: std::sync::Arc<tokio::sync::RwLock<crate::types::AppState>>,
-    pool: PgPool,
     grpc_url: String,
     world_package_id: String,
 ) {
@@ -246,7 +252,7 @@ pub async fn metadata_resolver_loop(
                 Some(system_id.clone())
             } else {
                 let mut client = world_client.write().await;
-                client.fetch_system_name(system_id, &pool).await
+                client.fetch_system_name(system_id).await
             };
             // fetch_system_name returns Some("") for known-bad IDs (cached 400/error).
             // Fall back to the raw system ID so the profile stops being queued.
@@ -275,7 +281,7 @@ pub async fn metadata_resolver_loop(
         for tribe_id in &pending_tribes {
             let info = {
                 let mut client = world_client.write().await;
-                client.fetch_tribe(tribe_id, &pool).await
+                client.fetch_tribe(tribe_id).await
             };
             if let Some(info) = info {
                 let mut s = state.write().await;
@@ -355,7 +361,6 @@ pub async fn metadata_resolver_loop(
                                         p.name = Some(name.to_string());
                                         p.dirty = true;
                                     }
-                                    let _ = crate::db::upsert_character_name(&pool, id, name).await;
                                     resolved += 1;
                                 }
                             }
