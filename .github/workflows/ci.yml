@@ -218,7 +218,9 @@ jobs:
 
   deploy-production:
     needs: [contracts, backend, frontend, lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.actor != 'dependabot[bot]'
+    # Disabled post-hackathon — hosted deployment torn down 2026.
+    # Flip back to the ref/event guard when redeploying.
+    if: false
     uses: ./.github/workflows/deploy-production.yml
     secrets: inherit
     permissions:
@@ -228,7 +230,9 @@ jobs:
 
   deploy-dev:
     needs: [contracts, backend, frontend, lint]
-    if: github.ref != 'refs/heads/main' && github.event_name == 'push' && github.actor != 'dependabot[bot]'
+    # Disabled post-hackathon — hosted deployment torn down 2026.
+    # Flip back to the ref/event guard when redeploying.
+    if: false
     uses: ./.github/workflows/deploy-dev.yml
     secrets: inherit
     permissions:

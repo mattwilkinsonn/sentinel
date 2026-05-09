@@ -13,6 +13,10 @@ pilots based on SENTINEL scores.
 
 Built for the EVE Frontier x Sui Hackathon 2026.
 
+## Demo
+
+[![SENTINEL demo](https://img.youtube.com/vi/tdI8pDOWx44/maxresdefault.jpg)](https://www.youtube.com/watch?v=tdI8pDOWx44)
+
 ## Architecture
 
 ```text
