@@ -59,7 +59,7 @@ jobs:
           VITE_BOUNTY_BOARD_ID: "0x6fafed6fd8a529c404029addb34f5688f1cf8131aad5d92a3ab5de4036566288"
 
       - name: Deploy with Pulumi
-        uses: pulumi/actions@v6
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: Zireael/sentinel/production
